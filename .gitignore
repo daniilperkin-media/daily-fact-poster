@@ -1,0 +1,27 @@
+# ── Secrets & environment ──────────────────────────────────────────────────────
+.env
+
+# ── Generated output ───────────────────────────────────────────────────────────
+output/
+logs/
+
+# ── Python cache ───────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+.venv/
+venv*/
+
+# ── IDE / editor files ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# NOTE: history.json is intentionally NOT gitignored.
+# It should be committed so GitHub Actions (and clones) preserve topic history.

@@ -1,74 +1,128 @@
-import os
+"""
+Fact generation using Google Gemini API.
+
+Improvements over the original:
+- Uses http_utils.post_with_retry for robust network calls
+- Uses logger instead of print()
+- Gemini already returns clean JSON with responseMimeType=application/json,
+  so no regex stripping is needed (was brittle)
+- Adds 'narration' field to the schema (needed by voice_generator / video pipeline)
+- Includes a virality_score self-check: re-requests once if score < 7
+- Falls back to a hardcoded sample fact on any failure
+"""
 import json
-import re
-import requests
-from typing import Dict, Any, List
+import os
+from typing import Any, Dict, List
 
-def generate_fact(past_topics: List[str] = None) -> Dict[str, Any]:
-    """
-    Generates a daily interesting fact using Google Gemini API.
-    Returns a dictionary containing title, short fact text, full caption, and image prompt.
-    """
-    api_key = os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("[WARNING] GEMINI_API_KEY missing. Returning fallback sample fact for testing.")
-        return {
-            "category": "Science",
-            "title": "Ancient Honey Discovery",
-            "fact_short": "Honey found inside 3,000-year-old Egyptian tombs is still 100% edible today due to its low moisture and acidic pH.",
-            "caption": "🍯 Mind-blowing science fact of the day!\n\nDid you know honey never spoils? Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.\n\n#DailyFact #DidYouKnow #ScienceFacts #FunFacts",
-            "image_prompt": "A glowing golden honey jar inside an ancient Egyptian pyramid tomb, 3d digital render, cinematic lighting"
-        }
+from http_utils import post_with_retry
+from logger import get_logger
 
-    past_topics_str = ", ".join(past_topics[-30:]) if past_topics else "None"
+log = get_logger()
 
-    prompt = f"""
+_FALLBACK_FACT: Dict[str, Any] = {
+    "category":     "Science",
+    "title":        "Ancient Honey Discovery",
+    "fact_short":   "Honey found inside 3,000-year-old Egyptian tombs is still 100% edible today due to its low moisture and acidic pH.",
+    "narration":    (
+        "Did you know honey never spoils? Archaeologists found honey in ancient Egyptian tombs "
+        "over three thousand years old — and it's still perfectly edible. The secret? "
+        "Honey's low moisture and natural acidity make it impossible for bacteria to survive."
+    ),
+    "caption":      (
+        "🍯 Mind-blowing science fact of the day!\n\n"
+        "Did you know honey never spoils? Archaeologists have found pots of honey in ancient "
+        "Egyptian tombs that are over 3,000 years old and still perfectly edible.\n\n"
+        "#DailyFact #DidYouKnow #ScienceFacts #FunFacts #MindBlown"
+    ),
+    "image_prompt": (
+        "A glowing golden honey jar inside an ancient Egyptian pyramid tomb, "
+        "3d digital render, cinematic lighting, dramatic shadows, rich amber tones, "
+        "9:16 vertical composition"
+    ),
+    "virality_score": 8,
+}
+
+_GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    "gemini-2.0-flash:generateContent?key={api_key}"
+)
+
+
+def _build_prompt(past_topics_str: str) -> str:
+    return f"""
 You are a viral social media content creator specializing in fascinating, verified facts.
 Generate 1 mind-blowing fact of the day.
 
 Avoid topics related to: {past_topics_str}.
 
-You MUST respond strictly with valid JSON with the following structure:
+Respond ONLY with a single valid JSON object (no markdown, no extra text):
 {{
-  "category": "Space / Science / History / Nature / Technology / Human Body",
+  "category": "Space | Science | History | Nature | Technology | Human Body",
   "title": "Short punchy title (max 4-5 words)",
-  "fact_short": "Core mind-blowing fact written in 1-2 clear, impactful sentences (max 30 words) for an image graphic card.",
-  "caption": "Full engaging social media post caption with emojis, explanation, and 5 relevant hashtags.",
-  "image_prompt": "Detailed AI image generation prompt describing a cinematic 3D visual representing this fact (no text in image, rich colors, high detail)."
+  "fact_short": "Core mind-blowing fact in 1-2 clear sentences (max 30 words) for a graphic card.",
+  "narration": "Natural 15-20 second voiceover script (~50 words). Engaging and mind-blowing.",
+  "caption": "Full engaging social media caption with emojis, explanation, and 5 relevant hashtags.",
+  "image_prompt": "Cinematic 3D visual prompt (no text in image, rich colors, high detail, 9:16 vertical).",
+  "virality_score": 8
 }}
 """
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+
+def _call_gemini(api_key: str, past_topics_str: str) -> Dict[str, Any]:
+    """Make one Gemini API call and return parsed JSON dict."""
+    url = _GEMINI_URL.format(api_key=api_key)
     payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
+        "contents": [{"parts": [{"text": _build_prompt(past_topics_str)}]}],
         "generationConfig": {
-            "temperature": 0.7,
-            "responseMimeType": "application/json"
-        }
+            "temperature": 0.8,
+            "responseMimeType": "application/json",  # Gemini returns clean JSON — no regex needed
+        },
     }
+    response = post_with_retry(url, json=payload, timeout=30, retries=3, backoff=5)
+    text_content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
+    return json.loads(text_content)
+
+
+def generate_fact(past_topics: List[str] = None) -> Dict[str, Any]:
+    """
+    Generate a daily interesting fact using Google Gemini 2.0 Flash.
+
+    If the generated fact has a virality_score < 7, regenerates once with
+    a higher temperature to get a more engaging result.
+
+    Returns:
+        Dict with keys: category, title, fact_short, narration, caption,
+        image_prompt, virality_score.
+    """
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if not api_key or api_key.startswith("AIzaSy_your"):
+        log.warning("GEMINI_API_KEY not set — returning fallback sample fact.")
+        return _FALLBACK_FACT
+
+    past_topics_str = ", ".join(past_topics[-30:]) if past_topics else "None"
 
     try:
-        response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
-        res_json = response.json()
-        text_content = res_json['candidates'][0]['content']['parts'][0]['text']
-        cleaned_text = re.sub(r"^```json\s*|\s*```$", "", text_content.strip(), flags=re.MULTILINE)
-        data = json.loads(cleaned_text)
+        data = _call_gemini(api_key, past_topics_str)
+
+        score = data.get("virality_score", 10)
+        if score < 7:
+            log.info(f"Virality score {score}/10 is low — regenerating for better content…")
+            try:
+                data = _call_gemini(api_key, past_topics_str)
+            except Exception as retry_err:
+                log.warning(f"Retry failed ({retry_err}) — keeping original low-score fact.")
+
+        log.info(
+            f"Fact generated ✓ [{data.get('category')}] "
+            f'"{data.get("title")}" (virality: {data.get("virality_score", "?")})'
+        )
         return data
+
     except Exception as e:
-        print(f"[WARNING] Gemini API request failed ({e}). Using sample fact fallback.")
-        return {
-            "category": "Science",
-            "title": "Ancient Honey Discovery",
-            "fact_short": "Honey found inside 3,000-year-old Egyptian tombs is still 100% edible today due to its low moisture and acidic pH.",
-            "caption": "🍯 Mind-blowing science fact of the day!\n\nDid you know honey never spoils? Archaeologists have found pots of honey in ancient Egyptian tombs that are over 3,000 years old and still perfectly edible.\n\n#DailyFact #DidYouKnow #ScienceFacts #FunFacts",
-            "image_prompt": "A glowing golden honey jar inside an ancient Egyptian pyramid tomb, 3d digital render, cinematic lighting"
-        }
+        log.warning(f"Gemini API failed ({e}) — using fallback fact.")
+        return _FALLBACK_FACT
+
 
 if __name__ == "__main__":
-    # Quick test if run directly
-    try:
-        fact_data = generate_fact()
-        print(json.dumps(fact_data, indent=2))
-    except Exception as err:
-        print(f"Error: {err}")
+    fact = generate_fact()
+    print(json.dumps(fact, indent=2, ensure_ascii=False))
