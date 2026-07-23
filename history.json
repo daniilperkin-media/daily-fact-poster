@@ -2,7 +2,22 @@
   "past_topics": [
     "Honey never spoils in Egyptian tombs",
     "Bananas are naturally radioactive",
-    "Octopuses have three hearts"
+    "Octopuses have three hearts",
+    "Jellyfish That Reverses Aging"
   ],
-  "posts_history": []
+  "posts_history": [
+    {
+      "timestamp": "2026-07-23T19:13:56.692031",
+      "title": "Jellyfish That Reverses Aging",
+      "category": "Nature",
+      "fact": "The Turritopsis dohrnii jellyfish reverts to its infant form when injured or aging.",
+      "image_url": "https://tmpfiles.org/dl/wgwWQhoi5L4T/daily_fact_card.png",
+      "platforms": []
+    }
+  ],
+  "stats": {
+    "total_posts": 1,
+    "last_run": "2026-07-23T19:13:56.692031",
+    "platform_counts": {}
+  }
 }

@@ -1,11 +1,16 @@
 """
 TikTok Content Posting API integration.
 
-Improvements over the original:
-- Polls publish_id status after upload (was fire-and-forget)
-  → confirms PUBLISH_COMPLETE or surfaces FAILED status
-- Uses logger instead of print()
-- Clears unused variable warning in status polling
+Uses the Direct Post endpoint (/v2/post/publish/video/init/) which supports
+a configurable privacy_level. Defaults to SELF_ONLY so unaudited apps can post
+immediately — change TIKTOK_PRIVACY_LEVEL in .env to PUBLIC_TO_EVERYONE once
+your TikTok Developer App is approved for production access.
+
+Workflow:
+  1. Query creator info to confirm posting eligibility
+  2. Init direct-post upload session with privacy + caption
+  3. PUT video binary to the returned upload_url
+  4. Poll publish_id until PUBLISH_COMPLETE or timeout
 """
 import os
 import time
@@ -17,7 +22,10 @@ from logger import get_logger
 log = get_logger()
 
 _POLL_INTERVAL = 5    # seconds between status checks
-_POLL_TIMEOUT  = 120  # maximum seconds to wait for processing
+_POLL_TIMEOUT  = 120  # max seconds to wait for processing
+
+# Valid values: PUBLIC_TO_EVERYONE | MUTUAL_FOLLOW_FRIENDS | SELF_ONLY
+_DEFAULT_PRIVACY = "SELF_ONLY"
 
 
 def get_client_credentials_token(client_key: str, client_secret: str) -> str | None:
@@ -46,11 +54,10 @@ def get_client_credentials_token(client_key: str, client_secret: str) -> str | N
 
 def _poll_publish_status(publish_id: str, token: str) -> str:
     """
-    Poll TikTok's publish status endpoint until a terminal state is reached
-    or the timeout is exceeded.
+    Poll TikTok's publish status endpoint until a terminal state or timeout.
 
     Returns:
-        Final status string: "PUBLISH_COMPLETE", "FAILED", "CANCELLED", or "TIMEOUT".
+        "PUBLISH_COMPLETE", "FAILED", "CANCELLED", or "TIMEOUT".
     """
     headers = {
         "Authorization": f"Bearer {token}",
@@ -70,11 +77,11 @@ def _poll_publish_status(publish_id: str, token: str) -> str:
             )
             if res.status_code == 200:
                 status = res.json().get("data", {}).get("status", "UNKNOWN")
-                log.info(f"TikTok publish status [{elapsed}s elapsed]: {status}")
+                log.info(f"TikTok publish status [{elapsed}s]: {status}")
                 if status in ("PUBLISH_COMPLETE", "FAILED", "CANCELLED"):
                     return status
             else:
-                log.warning(f"Status poll returned HTTP {res.status_code}: {res.text[:200]}")
+                log.warning(f"Status poll HTTP {res.status_code}: {res.text[:200]}")
         except Exception as e:
             log.warning(f"Status poll error: {e}")
 
@@ -92,24 +99,32 @@ def post_to_tiktok(
     video_path: str,
     caption: str = "",
     access_token: str = None,
+    privacy_level: str = None,
 ) -> bool:
     """
-    Post a video file to TikTok using the official Content Posting API.
-    Polls publish_id after upload to confirm processing.
+    Post a video to TikTok using the Direct Post API.
+
+    Privacy is controlled by the TIKTOK_PRIVACY_LEVEL env var (default: SELF_ONLY).
+    With an unaudited TikTok Developer App, only SELF_ONLY is permitted.
+    Once your app is approved, set TIKTOK_PRIVACY_LEVEL=PUBLIC_TO_EVERYONE.
+
+    After posting with SELF_ONLY:
+      1. Open TikTok app  →  Me  →  find the new private video
+      2. Tap ··· (More)  →  Privacy settings  →  change to Public
 
     Args:
         video_path:    Local path to the MP4 file.
-        caption:       Optional caption text (currently for reference only;
-                       TikTok inbox drafts don't support pre-filled captions).
+        caption:       Post caption / title (max 2 200 chars).
         access_token:  Overrides TIKTOK_ACCESS_TOKEN env var.
+        privacy_level: Overrides TIKTOK_PRIVACY_LEVEL env var.
 
     Returns:
-        True if upload succeeded and status is PUBLISH_COMPLETE (or TIMEOUT).
-        False if upload failed or credentials are missing.
+        True on PUBLISH_COMPLETE or TIMEOUT (upload succeeded, still processing).
+        False on failure or missing credentials.
     """
+    # ── Resolve token ──────────────────────────────────────────────
     token = access_token or os.environ.get("TIKTOK_ACCESS_TOKEN", "").strip()
 
-    # Try Client Credentials fallback
     if not token:
         client_key    = os.environ.get("TIKTOK_CLIENT_KEY",    "").strip()
         client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "").strip()
@@ -128,27 +143,62 @@ def post_to_tiktok(
         log.error(f"TikTok video file not found: {video_path}")
         return False
 
+    # ── Resolve privacy level ──────────────────────────────────────
+    privacy = (
+        privacy_level
+        or os.environ.get("TIKTOK_PRIVACY_LEVEL", _DEFAULT_PRIVACY).strip()
+    )
+    log.info(f"TikTok privacy level: {privacy}")
+    if privacy == "SELF_ONLY":
+        log.info(
+            "  ℹ After posting: TikTok app → Me → video → ··· → Privacy → change to Public"
+        )
+
     file_size = os.path.getsize(video_path)
     headers   = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
-    # ── 1. Initiate upload session ─────────────────────────────────
-    log.info("Initializing TikTok upload session…")
+    # ── 1. Init direct-post upload session ────────────────────────
+    log.info("Initializing TikTok direct-post upload session…")
     init_res = requests.post(
-        "https://open.tiktokapis.com/v2/post/publish/inbox/video/init/",
+        "https://open.tiktokapis.com/v2/post/publish/video/init/",
         headers=headers,
         json={
+            "post_info": {
+                "title":                    caption[:2200] if caption else "Daily Fact",
+                "privacy_level":            privacy,
+                "disable_duet":             False,
+                "disable_comment":          False,
+                "disable_stitch":           False,
+                "video_cover_timestamp_ms": 1000,
+            },
             "source_info": {
                 "source":            "FILE_UPLOAD",
                 "video_size":        file_size,
                 "chunk_size":        file_size,
                 "total_chunk_count": 1,
-            }
+            },
         },
         timeout=30,
     )
 
     if init_res.status_code != 200:
-        log.error(f"TikTok init failed ({init_res.status_code}): {init_res.text}")
+        err = init_res.json().get("error", {})
+        code = err.get("code", "")
+        msg  = err.get("message", init_res.text[:300])
+
+        if code == "unaudited_client_can_only_post_to_private_accounts":
+            log.error(
+                "TikTok rejected the post because your Developer App is not yet approved "
+                "for public posting. Set TIKTOK_PRIVACY_LEVEL=SELF_ONLY in .env and retry."
+            )
+        elif code == "spam_risk_too_many_pending_share":
+            log.error(
+                "TikTok rejected the post — too many pending shares.\n"
+                "  Fix: open TikTok app → Me → find draft videos → ··· → Delete\n"
+                "  (Dismissing inbox notifications is NOT enough — the draft must be deleted.)"
+            )
+        else:
+            log.error(f"TikTok init failed ({init_res.status_code}): {msg}")
         return False
 
     res_data   = init_res.json().get("data", {})
@@ -183,11 +233,18 @@ def post_to_tiktok(
     final_status = _poll_publish_status(publish_id, token)
 
     if final_status == "PUBLISH_COMPLETE":
-        log.info("✅ TikTok video published successfully!")
+        log.info(
+            f"✅ TikTok video posted successfully! (privacy: {privacy})\n"
+            + (
+                "   To make it public: TikTok app → Me → video → ··· → Privacy settings"
+                if privacy == "SELF_ONLY" else ""
+            )
+        )
         return True
     elif final_status == "TIMEOUT":
-        # Upload succeeded; TikTok processing continues asynchronously
-        log.warning("⏳ TikTok still processing — check your TikTok app inbox for the draft.")
+        log.warning(
+            "⏳ TikTok still processing — check your TikTok profile for the new private video."
+        )
         return True
     else:
         log.error(f"❌ TikTok publish ended with status: {final_status}")
