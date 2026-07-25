@@ -25,7 +25,7 @@ def call_openrouter_llm(
 
     Environment variables:
         OPENROUTER_API_KEY  — required
-        TEXT_MODEL          — LLM model slug (default: deepseek/deepseek-r1)
+        TEXT_MODEL          — LLM model slug (default: openai/gpt-4o-mini)
         OPENROUTER_REFERER  — HTTP-Referer header (default: https://github.com)
         OPENROUTER_TITLE    — X-Title header (default: Daily Fact Poster)
 
@@ -37,7 +37,7 @@ def call_openrouter_llm(
         requests.HTTPError: On non-2xx responses.
     """
     api_key      = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    target_model = model or os.environ.get("TEXT_MODEL", "deepseek/deepseek-r1")
+    target_model = model or os.environ.get("TEXT_MODEL", "openai/gpt-4o-mini")
     referer      = os.environ.get("OPENROUTER_REFERER", "https://github.com")
     title        = os.environ.get("OPENROUTER_TITLE",   "Daily Fact Poster")
 
@@ -57,6 +57,7 @@ def call_openrouter_llm(
             {"role": "user",   "content": prompt},
         ],
         "temperature": 0.7,
+        "response_format": {"type": "json_object"},
     }
 
     log.info(f"Calling OpenRouter ({target_model})…")

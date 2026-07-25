@@ -15,6 +15,7 @@ import os
 from typing import Any, Dict, List
 
 from http_utils import post_with_retry
+from history_manager import load_history, is_duplicate
 from logger import get_logger
 
 log = get_logger()
@@ -61,7 +62,7 @@ Respond ONLY with a single valid JSON object (no markdown, no extra text):
   "title": "Short punchy title (max 4-5 words)",
   "fact_short": "Core mind-blowing fact in 1-2 clear sentences (max 30 words) for a graphic card.",
   "narration": "Natural 15-20 second voiceover script (~50 words). Engaging and mind-blowing.",
-  "caption": "Full engaging social media caption with emojis, explanation, and 5 relevant hashtags.",
+  "caption": "Full social media caption with emojis and 5 highly targeted, dynamic hashtags trending in this specific niche.",
   "image_prompt": "Cinematic 3D visual prompt (no text in image, rich colors, high detail, 9:16 vertical).",
   "virality_score": 8
 }}
@@ -99,28 +100,35 @@ def generate_fact(past_topics: List[str] = None) -> Dict[str, Any]:
         log.warning("GEMINI_API_KEY not set — returning fallback sample fact.")
         return _FALLBACK_FACT
 
-    past_topics_str = ", ".join(past_topics[-30:]) if past_topics else "None"
+    past_topics_str = ", ".join(past_topics[-150:]) if past_topics else "None"
+    history = load_history()
 
-    try:
-        data = _call_gemini(api_key, past_topics_str)
+    for attempt in range(3):
+        try:
+            data = _call_gemini(api_key, past_topics_str)
+            
+            title = data.get('title', '')
+            fact_short = data.get('fact_short', '')
+            score = data.get("virality_score", 10)
+            
+            if is_duplicate(history, title, fact_short):
+                log.warning(f"Generated duplicate fact '{title}' — regenerating (attempt {attempt+1}/3)…")
+                continue
 
-        score = data.get("virality_score", 10)
-        if score < 7:
-            log.info(f"Virality score {score}/10 is low — regenerating for better content…")
-            try:
-                data = _call_gemini(api_key, past_topics_str)
-            except Exception as retry_err:
-                log.warning(f"Retry failed ({retry_err}) — keeping original low-score fact.")
+            if score <= 7:
+                log.info(f"Virality score {score}/10 is low — regenerating for better content (attempt {attempt+1}/3)…")
+                continue
 
-        log.info(
-            f"Fact generated ✓ [{data.get('category')}] "
-            f'"{data.get("title")}" (virality: {data.get("virality_score", "?")})'
-        )
-        return data
-
-    except Exception as e:
-        log.warning(f"Gemini API failed ({e}) — using fallback fact.")
-        return _FALLBACK_FACT
+            log.info(
+                f"Fact generated ✓ [{data.get('category')}] "
+                f'"{title}" (virality: {score})'
+            )
+            return data
+        except Exception as e:
+            log.warning(f"Gemini API failed on attempt {attempt+1} ({e})")
+            
+    log.warning("All Gemini attempts failed or resulted in low score/duplicates — using fallback fact.")
+    return _FALLBACK_FACT
 
 
 if __name__ == "__main__":

@@ -19,7 +19,7 @@ import json
 import os
 from typing import Any, Dict, List
 
-MAX_TOPICS = 200
+MAX_TOPICS = 2000
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history.json")
 
 
@@ -53,6 +53,36 @@ def save_history(data: Dict[str, Any]) -> None:
 def get_past_topics(history: Dict[str, Any]) -> List[str]:
     """Return the list of past topic titles (for de-duplication prompting)."""
     return history.get("past_topics", [])
+
+
+def is_duplicate(history: Dict[str, Any], title: str, fact_short: str) -> bool:
+    """
+    Check if a newly generated fact is a duplicate by comparing keywords 
+    against past_topics. Returns True if a high similarity is found.
+    """
+    past_topics = get_past_topics(history)
+    if not past_topics:
+        return False
+        
+    def _get_keywords(text: str) -> set[str]:
+        # Simple lowercase tokenization, ignoring short common words
+        words = text.lower().replace(",", "").replace(".", "").split()
+        return {w for w in words if len(w) > 4}
+
+    new_keywords = _get_keywords(title + " " + fact_short)
+    if not new_keywords:
+        return False
+
+    for old_topic in past_topics[-200:]:  # Check against recent 200 to save time
+        old_keywords = _get_keywords(old_topic)
+        if not old_keywords:
+            continue
+        # If there's a strong overlap in significant words (e.g. 2 or more shared long words)
+        overlap = new_keywords.intersection(old_keywords)
+        if len(overlap) >= 2:
+            return True
+            
+    return False
 
 
 def record_post(
