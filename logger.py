@@ -38,10 +38,13 @@ def get_logger(name: str = "daily_fact") -> logging.Logger:
     log.addHandler(ch)
 
     # ── Rotating file handler ──────────────────────────────────────
+    # Key the log file by logger name so different named loggers don't all
+    # clobber the same "pipeline.log" (the default "daily_fact" logger
+    # writes logs/daily_fact.log).
     logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
     os.makedirs(logs_dir, exist_ok=True)
     fh = logging.handlers.RotatingFileHandler(
-        os.path.join(logs_dir, "pipeline.log"),
+        os.path.join(logs_dir, f"{name}.log"),
         maxBytes=2_000_000,
         backupCount=5,
         encoding="utf-8",

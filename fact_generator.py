@@ -12,15 +12,16 @@ Improvements over the original:
 """
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 
+from constants import PLACEHOLDER_GEMINI_KEY, is_unset_secret
+from history_manager import is_duplicate, load_history
 from http_utils import post_with_retry
-from history_manager import load_history, is_duplicate
 from logger import get_logger
 
 log = get_logger()
 
-_FALLBACK_FACT: Dict[str, Any] = {
+_FALLBACK_FACT: dict[str, Any] = {
     "category":     "Science",
     "title":        "Ancient Honey Discovery",
     "fact_short":   "Honey found inside 3,000-year-old Egyptian tombs is still 100% edible today due to its low moisture and acidic pH.",
@@ -69,7 +70,7 @@ Respond ONLY with a single valid JSON object (no markdown, no extra text):
 """
 
 
-def _call_gemini(api_key: str, past_topics_str: str) -> Dict[str, Any]:
+def _call_gemini(api_key: str, past_topics_str: str) -> dict[str, Any]:
     """Make one Gemini API call and return parsed JSON dict."""
     url = _GEMINI_URL.format(api_key=api_key)
     payload = {
@@ -84,38 +85,55 @@ def _call_gemini(api_key: str, past_topics_str: str) -> Dict[str, Any]:
     return json.loads(text_content)
 
 
-def generate_fact(past_topics: List[str] = None) -> Dict[str, Any]:
+def generate_fact(
+    past_topics: list[str] | None = None,
+    history: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Generate a daily interesting fact using Google Gemini 2.0 Flash.
 
     If the generated fact has a virality_score < 7, regenerates once with
     a higher temperature to get a more engaging result.
 
+    Args:
+        past_topics: Optional list of past topic titles to avoid duplicates.
+            If provided (e.g. by the main pipeline, which already loaded
+            history), it is used directly. ``None`` triggers a fresh load
+            from disk so this function remains usable standalone.
+        history: Optional already-loaded history dict for duplicate checks.
+            If ``None``, history is loaded from disk. Callers that already
+            have ``history`` should pass it through to avoid a redundant
+            second disk read.
+
     Returns:
         Dict with keys: category, title, fact_short, narration, caption,
         image_prompt, virality_score.
     """
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key or api_key.startswith("AIzaSy_your"):
+    if is_unset_secret(api_key, PLACEHOLDER_GEMINI_KEY):
         log.warning("GEMINI_API_KEY not set — returning fallback sample fact.")
         return _FALLBACK_FACT
 
     past_topics_str = ", ".join(past_topics[-150:]) if past_topics else "None"
-    history = load_history()
+    # Only load history from disk if the caller did not pass it in. The main
+    # pipeline already loads history and passes past_topics, so this avoids
+    # a redundant second read of history.json on every pipeline run.
+    if history is None:
+        history = load_history()
 
     for attempt in range(3):
         try:
             data = _call_gemini(api_key, past_topics_str)
-            
+
             title = data.get('title', '')
             fact_short = data.get('fact_short', '')
             score = data.get("virality_score", 10)
-            
+
             if is_duplicate(history, title, fact_short):
                 log.warning(f"Generated duplicate fact '{title}' — regenerating (attempt {attempt+1}/3)…")
                 continue
 
-            if score <= 7:
+            if score < 7:
                 log.info(f"Virality score {score}/10 is low — regenerating for better content (attempt {attempt+1}/3)…")
                 continue
 
@@ -126,7 +144,7 @@ def generate_fact(past_topics: List[str] = None) -> Dict[str, Any]:
             return data
         except Exception as e:
             log.warning(f"Gemini API failed on attempt {attempt+1} ({e})")
-            
+
     log.warning("All Gemini attempts failed or resulted in low score/duplicates — using fallback fact.")
     return _FALLBACK_FACT
 

@@ -1,6 +1,8 @@
-# 💡 Daily Fact Poster
+# Daily Fact Poster
 
-An automated AI pipeline that generates a daily fact card + TikTok video and publishes to **TikTok, Telegram, Discord, Threads, Instagram, and X** — all from a single command.
+An automated AI pipeline that generates a daily fact carousel (script, AI
+background images, composited cards, voiceover, and a 9:16 MP4) and publishes
+the video to **TikTok** — all from a single command.
 
 ---
 
@@ -9,29 +11,30 @@ An automated AI pipeline that generates a daily fact card + TikTok video and pub
 ```
 main.py
   │
-  ├── [2] fact_generator.py      ← Gemini 2.0 Flash (or OpenRouter/DeepSeek R1)
-  │                                 Virality self-score; regenerates if score < 7
+  ├── [2] script_generator.py   ← OpenRouter GPT-4o-mini multi-scene script
+  │                                (falls back to Gemini single-fact if no key)
   │
-  ├── [3] image_generator.py     ← Pollinations.ai (free, no key)
-  │                                 Random seed, content-type validation, retry
+  ├── [3] image_generator.py    ← OpenRouter Flux 2 Pro (requires OPENROUTER_API_KEY)
+  │                                Vertical 1080×1920, retry via http_utils
   │
-  ├── [4] graphic_builder.py     ← PIL: gradient overlay, pixel-accurate text wrap
-  │                                 Supports "square" (1080×1080) and "vertical" (1080×1920)
+  ├── [4] graphic_builder.py    ← PIL: gradient overlay, pixel-accurate text wrap
+  │                                "vertical" (1080×1920) cards
   │
-  ├── [5] voice_generator.py     ← edge-tts (Microsoft Neural TTS, free)
-  │   video_builder.py           ← FFmpeg: Ken Burns zoom, fade in/out, 9:16 MP4
+  ├── [5] voice_generator.py    ← edge-tts (Microsoft Neural TTS, free)
   │
-  ├── [6] uploader.py            ← AWS S3 → tmpfiles.org fallback
+  ├── [6] FFmpeg slideshow      ← 2.5s per slide, libx264, 30fps, yuv420p
   │
-  └── [7] poster.py              ← Make.com webhook (Threads / Instagram / X)
-      tiktok_poster.py           ← TikTok API + publish_id polling
-      (Telegram, Discord inline) ← Direct Bot API / webhook
+  └── [7] tiktok_poster.py      ← TikTok Content Posting API (video upload + poll)
 ```
 
 **Support modules:**
+- `constants.py` — shared placeholder-sentinel constants and `SizeMode` type
 - `logger.py` — structured timestamps to stdout + rotating `logs/pipeline.log`
 - `http_utils.py` — GET/POST with automatic retry + exponential backoff
-- `history_manager.py` — de-duplication history capped at 200 topics + stats
+- `history_manager.py` — de-duplication history capped at 2000 topics + stats
+- `openrouter_client.py` — OpenRouter chat-completion API client
+- `tiktok_auth.py` / `get_tiktok_user_token.py` — TikTok OAuth helpers
+- `uploader.py` — S3 / tmpfiles.org upload (used by TikTok init)
 
 ---
 
@@ -41,6 +44,8 @@ main.py
 
 ```bash
 pip install -r requirements.txt
+# Development (pytest, ruff):
+pip install -r requirements-dev.txt
 ```
 
 ### 2. Install FFmpeg (system dependency)
@@ -75,17 +80,11 @@ See `fonts/FONTS.md` for details and alternatives.
 # Dry run — full pipeline locally, no posts sent
 python main.py --dry-run
 
-# Production — generate and post everywhere
+# Production — generate and post to TikTok
 python main.py
 
-# Fast image-only run (no TTS / FFmpeg needed)
-python main.py --no-video
-
-# Generate both 1:1 square and 9:16 vertical cards
-python main.py --multi-format
-
-# TikTok + Make.com only
-python main.py --no-telegram --no-discord
+# Skip TikTok posting (still generates all assets)
+python main.py --no-tiktok
 ```
 
 ---
@@ -94,25 +93,22 @@ python main.py --no-telegram --no-discord
 
 | Variable               | Required | Description |
 |------------------------|----------|-------------|
-| `GEMINI_API_KEY`       | Yes*     | Google Gemini API key for fact generation |
-| `OPENROUTER_API_KEY`   | No       | OpenRouter key for DeepSeek R1 (richer scripts) |
-| `TEXT_MODEL`           | No       | OpenRouter model slug (default: `deepseek/deepseek-r1`) |
+| `OPENROUTER_API_KEY`   | Yes*     | OpenRouter key for script generation (GPT-4o-mini) and image generation (Flux 2 Pro) |
+| `TEXT_MODEL`           | No       | OpenRouter model slug for script generation (default: `openai/gpt-4o-mini`) |
 | `OPENROUTER_REFERER`   | No       | HTTP-Referer for OpenRouter (default: `https://github.com`) |
 | `OPENROUTER_TITLE`     | No       | X-Title for OpenRouter (default: `Daily Fact Poster`) |
+| `GEMINI_API_KEY`       | No       | Google Gemini key (fallback for single-fact mode when OpenRouter is unset) |
 | `TTS_VOICE`            | No       | edge-tts voice name (default: `en-US-ChristopherNeural`) |
 | `TIKTOK_ACCESS_TOKEN`  | No       | TikTok user access token for direct posting |
 | `TIKTOK_CLIENT_KEY`    | No       | TikTok Client Key (alternative auth method) |
 | `TIKTOK_CLIENT_SECRET` | No       | TikTok Client Secret |
-| `TELEGRAM_BOT_TOKEN`   | No       | Telegram Bot API token |
-| `TELEGRAM_CHAT_ID`     | No       | Telegram channel handle or ID |
-| `DISCORD_WEBHOOK_URL`  | No       | Discord channel webhook URL |
-| `MAKE_WEBHOOK_URL`     | No       | Make.com webhook for Threads / Instagram / X |
 | `AWS_ACCESS_KEY_ID`    | No       | AWS IAM key for S3 upload |
 | `AWS_SECRET_ACCESS_KEY`| No       | AWS IAM secret |
 | `AWS_REGION`           | No       | S3 bucket region (default: `us-east-1`) |
 | `AWS_S3_BUCKET`        | No       | S3 bucket name |
 
-*If `GEMINI_API_KEY` is unset, the pipeline falls back to a hardcoded sample fact.
+*If `OPENROUTER_API_KEY` is unset, the pipeline falls back to a single
+Gemini-generated fact (or a hardcoded sample fact if Gemini is also unset).
 
 ---
 
@@ -134,48 +130,27 @@ schtasks /delete /tn "DailyFactPoster" /f       # remove
 
 ---
 
-## Make.com Webhook Setup
-
-1. Sign up at [make.com](https://www.make.com/) (free tier available)
-2. Create a new Scenario → add a **Custom Webhook** trigger module
-3. Copy the Webhook URL into `.env` as `MAKE_WEBHOOK_URL`
-4. Add action modules: Threads, Instagram for Business, Twitter/X, Telegram Channel
-5. Map `1.caption` and `1.image_url` to each social action
-
-The webhook payload structure:
-
-```json
-{
-  "title":     "Fact headline",
-  "fact":      "One sentence fact",
-  "category":  "Science",
-  "caption":   "Full caption with emojis and hashtags",
-  "image_url": "https://...",
-  "source":    "Daily_Fact_Poster"
-}
-```
-
----
-
 ## File Structure
 
 ```
 Daily_Fact_Poster/
 ├── main.py                   ← Unified pipeline entry point (use this)
-├── generate_and_post.py      ← Deprecated shim → delegates to main.py
-├── fact_generator.py         ← Gemini fact generation
-├── script_generator.py       ← OpenRouter/DeepSeek video script generation
-├── image_generator.py        ← Pollinations.ai image generation
+├── constants.py              ← Shared placeholder sentinels + SizeMode type
+├── fact_generator.py         ← Gemini fact generation (fallback)
+├── script_generator.py       ← OpenRouter multi-scene script generation
+├── image_generator.py        ← OpenRouter Flux 2 Pro image generation
 ├── graphic_builder.py        ← PIL graphic card compositor
-├── video_builder.py          ← FFmpeg 9:16 video builder
 ├── voice_generator.py        ← edge-tts neural voiceover
 ├── tiktok_poster.py          ← TikTok API posting + status polling
+├── tiktok_auth.py            ← TikTok OAuth token helpers
+├── get_tiktok_user_token.py  ← Interactive TikTok token acquisition
 ├── uploader.py               ← S3 / tmpfiles.org upload
-├── poster.py                 ← Make.com webhook
+├── openrouter_client.py      ← OpenRouter API client
 ├── logger.py                 ← Structured logging
 ├── http_utils.py             ← HTTP retry/backoff helpers
 ├── history_manager.py        ← Post history & de-duplication
-├── openrouter_client.py      ← OpenRouter API client
+├── tests/                    ← pytest test suite
+├── ruff.toml                 ← Ruff linter config
 ├── history.json              ← Post history (committed for CI persistence)
 ├── fonts/                    ← Place Inter-Bold.ttf / Inter-Regular.ttf here
 │   └── FONTS.md
@@ -183,7 +158,8 @@ Daily_Fact_Poster/
 ├── logs/                     ← Pipeline logs (gitignored)
 ├── .env                      ← Your credentials (gitignored)
 ├── .env.example              ← Template with all variables documented
-├── requirements.txt
+├── requirements.txt          ← Runtime dependencies (pinned)
+├── requirements-dev.txt      ← Development dependencies (pytest, ruff)
 ├── scheduler_windows.bat     ← Windows Task Scheduler setup
 └── .gitignore
 ```

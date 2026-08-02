@@ -1,37 +1,54 @@
 """
-Multi-scene TikTok video script generator using DeepSeek R1 via OpenRouter.
-Falls back to Gemini fact_generator if OpenRouter is not configured.
+Multi-scene TikTok video script generator using OpenRouter (default model:
+openai/gpt-4o-mini). Falls back to Gemini fact_generator if OpenRouter is
+not configured.
 
 Uses logger instead of print().
 """
 import json
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any
 
-from openrouter_client import call_openrouter_llm
+from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
 from fact_generator import generate_fact as fallback_gemini_fact
-from history_manager import load_history, is_duplicate
+from history_manager import is_duplicate, load_history
 from logger import get_logger
+from openrouter_client import call_openrouter_llm
 
 log = get_logger()
 
 
-def generate_multi_scene_script(past_topics: List[str] = None) -> Dict[str, Any]:
+def generate_multi_scene_script(
+    past_topics: list[str] | None = None,
+    history: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
-    Generate a 15–25 second educational video script via DeepSeek R1 / OpenRouter.
+    Generate a 15–25 second educational video script via OpenRouter.
     Falls back to Gemini generate_fact() if OpenRouter is unavailable.
 
+    Args:
+        past_topics: Optional list of past topic titles to avoid duplicates.
+            If ``None``, an empty string is used for the prompt.
+        history: Optional already-loaded history dict for duplicate checks.
+            If ``None``, history is loaded from disk. Callers that already
+            have ``history`` (e.g. the main pipeline) should pass it through
+            to avoid a redundant second disk read.
+
     Returns:
-        Dict with keys: category, title, fact_short, narration, caption, image_prompt.
+        Dict with keys: category, title, fact_short, narration, caption,
+        image_prompt, slides.
     """
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not api_key or api_key.startswith("sk-or-v1-your_"):
+    if is_unset_secret(api_key, PLACEHOLDER_OPENROUTER_KEY):
         log.info("OPENROUTER_API_KEY not set — using Gemini fallback for fact generation.")
-        return fallback_gemini_fact(past_topics)
+        return fallback_gemini_fact(past_topics, history=history)
 
     past_topics_str = ", ".join(past_topics[-150:]) if past_topics else "None"
-    history = load_history()
+    # Only load history from disk if the caller did not pass it in. The main
+    # pipeline already loads history, so this avoids a redundant read.
+    if history is None:
+        history = load_history()
 
     system_prompt = (
         "You are a master viral TikTok short video producer. "
@@ -63,16 +80,16 @@ Respond ONLY with valid JSON:
             # Strip markdown fences if the model wraps the JSON (defensive only)
             cleaned = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw.strip(), flags=re.MULTILINE)
             data = json.loads(cleaned)
-            
+
             title = data.get('title', '')
             fact_short = data.get('fact_short', '')
             score = data.get('virality_score', 10)
-            
+
             if is_duplicate(history, title, fact_short):
                 log.warning(f"Generated duplicate fact '{title}' — regenerating (attempt {attempt+1}/3)…")
                 continue
-                
-            if score <= 7:
+
+            if score < 7:
                 log.info(f"Virality score {score}/10 is low — regenerating for better content (attempt {attempt+1}/3)…")
                 continue
 
@@ -83,6 +100,6 @@ Respond ONLY with valid JSON:
             return data
         except Exception as e:
             log.warning(f"OpenRouter script generation failed on attempt {attempt+1} ({e})")
-            
+
     log.warning("All attempts failed or resulted in low score/duplicates — using Gemini fallback.")
-    return fallback_gemini_fact(past_topics)
+    return fallback_gemini_fact(past_topics, history=history)

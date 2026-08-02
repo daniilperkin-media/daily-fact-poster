@@ -1,7 +1,7 @@
 import os
-import sys
 import urllib.parse
 import webbrowser
+
 import requests
 from dotenv import load_dotenv
 
@@ -67,14 +67,14 @@ def get_user_token():
 
     access_token = res_json.get("access_token")
     if access_token:
-        print(f"\n🎉 SUCCESS! Received User Access Token!")
-        
+        print("\n🎉 SUCCESS! Received User Access Token!")
+
         # Save to .env file automatically
         env_path = os.path.join(os.path.dirname(__file__), ".env")
         with open(env_path, "a", encoding="utf-8") as f:
             f.write(f"\nTIKTOK_ACCESS_TOKEN={access_token}\n")
-        
-        print(f"Token automatically saved to .env as TIKTOK_ACCESS_TOKEN!")
+
+        print("Token automatically saved to .env as TIKTOK_ACCESS_TOKEN!")
     else:
         print(f"\n❌ Error fetching token: {res_json}")
 

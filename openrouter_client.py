@@ -10,6 +10,7 @@ import os
 
 import requests
 
+from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
 from logger import get_logger
 
 log = get_logger()
@@ -18,7 +19,7 @@ log = get_logger()
 def call_openrouter_llm(
     prompt: str,
     system_prompt: str = "You are a professional social media video producer.",
-    model: str = None,
+    model: str | None = None,
 ) -> str:
     """
     Call OpenRouter's chat completions endpoint.
@@ -41,7 +42,7 @@ def call_openrouter_llm(
     referer      = os.environ.get("OPENROUTER_REFERER", "https://github.com")
     title        = os.environ.get("OPENROUTER_TITLE",   "Daily Fact Poster")
 
-    if not api_key or api_key.startswith("sk-or-v1-your_"):
+    if is_unset_secret(api_key, PLACEHOLDER_OPENROUTER_KEY):
         raise ValueError("OPENROUTER_API_KEY is missing or still a placeholder in .env.")
 
     headers = {

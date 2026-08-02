@@ -8,24 +8,21 @@ Features:
 - Supports multi-slide layouts (Title slides vs Body slides)
 """
 import os
-from typing import Literal, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 
+from constants import SizeMode
 from logger import get_logger
 
 log = get_logger()
 
-# ── Types ──────────────────────────────────────────────────────────────────────
-SizeMode = Literal["square", "vertical"]
-
-CANVAS_SIZES: dict[SizeMode, Tuple[int, int]] = {
+CANVAS_SIZES: dict[SizeMode, tuple[int, int]] = {
     "square":   (1080, 1080),
     "vertical": (1080, 1920),
 }
 
 # Category → accent color (R, G, B)
-CATEGORY_COLORS: dict[str, Tuple[int, int, int]] = {
+CATEGORY_COLORS: dict[str, tuple[int, int, int]] = {
     "Space":       (30,  130, 255),
     "Science":     (0,   200, 160),
     "History":     (220, 140,  20),
@@ -33,7 +30,7 @@ CATEGORY_COLORS: dict[str, Tuple[int, int, int]] = {
     "Technology":  (140,  30, 230),
     "Human Body":  (225,  60,  60),
 }
-_DEFAULT_ACCENT: Tuple[int, int, int] = (255, 180, 0)
+_DEFAULT_ACCENT: tuple[int, int, int] = (255, 180, 0)
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -78,8 +75,8 @@ def _create_gradient_overlay(width: int, height: int) -> Image.Image:
     for y in range(height):
         # Start gradient halfway down to keep the top clear for the subject
         t = max(0, (y - height/3) / (2*height/3))
-        pixels[0, y] = int(210 * (t ** 1.0))
-    alpha_channel = strip.resize((width, height), Image.LANCZOS)
+        pixels[0, y] = int(210 * t)
+    alpha_channel = strip.resize((width, height), Image.Resampling.LANCZOS)
     overlay = Image.new("RGBA", (width, height), (0, 0, 0))
     overlay.putalpha(alpha_channel)
     return overlay
@@ -152,7 +149,7 @@ def build_graphic_card(
     W, H = CANVAS_SIZES[size]
 
     if os.path.exists(background_path):
-        base = Image.open(background_path).convert("RGBA").resize((W, H), Image.LANCZOS)
+        base = Image.open(background_path).convert("RGBA").resize((W, H), Image.Resampling.LANCZOS)
     else:
         log.warning(f"Background not found: '{background_path}' — using dark canvas fallback.")
         base = Image.new("RGBA", (W, H), (18, 22, 32, 255))
@@ -166,7 +163,7 @@ def build_graphic_card(
     TEXT_W = W - 2 * MARGIN
 
     is_title_slide = (slide_index == 1 or slide_index == total_slides)
-    
+
     font_badge = _get_font(30, bold=True)
     font_text  = _get_font(60 if is_title_slide else 48, bold=is_title_slide)
     font_mark  = _get_font(26, bold=False)
@@ -174,7 +171,7 @@ def build_graphic_card(
     accent = CATEGORY_COLORS.get(category, _DEFAULT_ACCENT)
 
     # ── Category badge (only on first slide) ────────────────────────
-    badge_y = -100 # hidden by default
+    badge_y = 0  # only assigned (and read) inside the slide_index == 1 block
     if slide_index == 1:
         badge_label = f"💡 {category.upper()}" if category else "💡 FACT OF THE DAY"
         try:
@@ -211,7 +208,7 @@ def build_graphic_card(
     text_to_render = slide_text.upper() if is_title_slide else slide_text
     lines = _wrap_pixels(draw, text_to_render, font_text, TEXT_W)
     line_h = 75 if is_title_slide else 60
-    
+
     # Position text lower on the screen for carousels (above caption area)
     total_text_h = len(lines) * line_h
     start_y = H - total_text_h - 200

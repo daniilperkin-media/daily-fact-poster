@@ -1,8 +1,10 @@
 import os
 import re
-import requests
 import urllib.parse
+
+import requests
 from dotenv import load_dotenv
+
 
 def update_env_file(key: str, value: str):
     """Update a specific key in the .env file safely."""
@@ -10,10 +12,10 @@ def update_env_file(key: str, value: str):
     if not os.path.exists(env_file):
         with open(env_file, "w") as f:
             f.write("")
-    
-    with open(env_file, "r") as f:
+
+    with open(env_file) as f:
         lines = f.readlines()
-    
+
     key_found = False
     with open(env_file, "w") as f:
         for line in lines:
@@ -29,12 +31,12 @@ def main():
     print("==================================================")
     print("      TikTok OAuth 2.0 Token Generator            ")
     print("==================================================")
-    
+
     load_dotenv()
-    
+
     client_key = os.environ.get("TIKTOK_CLIENT_KEY", "").strip()
     client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "").strip()
-    
+
     if not client_key or not client_secret:
         print("❌ Error: TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET not found in .env!")
         print("Please add them to your .env file first.")
@@ -66,10 +68,10 @@ def main():
     print("\nLog in to TikTok and click 'Authorize'.")
     print(f"You will be redirected to a page that starts with {redirect_uri}")
     print("It might look like it's broken or failed to load. That is normal!")
-    
+
     print("\n[STEP 2] Copy the ENTIRE URL from your browser's address bar and paste it below:")
     redirected_url = input("> ").strip()
-    
+
     if not redirected_url:
         print("❌ No URL provided. Aborting.")
         return
@@ -79,17 +81,17 @@ def main():
         parsed_url = urllib.parse.urlparse(redirected_url)
         query_params = urllib.parse.parse_qs(parsed_url.query)
         code = query_params.get("code", [None])[0]
-        
+
         if not code:
             # Fallback regex just in case
             match = re.search(r'code=([^&]+)', redirected_url)
             if match:
                 code = match.group(1)
-                
+
         if not code:
             print("❌ Could not find 'code' in the provided URL. Please try again.")
             return
-            
+
     except Exception as e:
         print(f"❌ Error parsing URL: {e}")
         return
@@ -97,11 +99,11 @@ def main():
     # Decode the code because it is URL-encoded
     code = urllib.parse.unquote(code)
     print(f"\n✅ Extracted Authorization Code: {code[:5]}...{code[-5:]}")
-    
+
     print("\n[STEP 3] Exchanging code for Access Token...")
-    
+
     token_url = "https://open.tiktokapis.com/v2/oauth/token/"
-    
+
     # TikTok OAuth v2 requires form-urlencoded data
     payload = {
         "client_key": client_key,
@@ -110,7 +112,7 @@ def main():
         "grant_type": "authorization_code",
         "redirect_uri": redirect_uri
     }
-    
+
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
         "Cache-Control": "no-cache"
@@ -119,24 +121,24 @@ def main():
     try:
         response = requests.post(token_url, data=payload, headers=headers)
         data = response.json()
-        
+
         if response.status_code == 200 and "access_token" in data:
             access_token = data["access_token"]
             refresh_token = data.get("refresh_token", "")
-            
+
             print("\n🎉 Success! Tokens received.")
             print(f"Access Token:  {access_token[:15]}...")
             print(f"Refresh Token: {refresh_token[:15]}...")
-            
+
             print("\n[STEP 4] Automatically saving tokens to .env file...")
             update_env_file("TIKTOK_ACCESS_TOKEN", access_token)
             update_env_file("TIKTOK_REFRESH_TOKEN", refresh_token)
             print("✅ .env file updated successfully! You can now run main.py.")
-            
+
         else:
             print(f"\n❌ Failed to get tokens (Status {response.status_code}).")
             print(f"Response: {data}")
-            
+
     except Exception as e:
         print(f"\n❌ Request failed: {e}")
 

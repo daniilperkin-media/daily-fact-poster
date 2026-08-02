@@ -1,7 +1,7 @@
 """
 Daily Fact Poster — Unified Pipeline Entry Point (TikTok Video Carousel)
 =================================================
-Combines script generation, AI image generation (Flux 2 Pro), compositing, 
+Combines script generation, AI image generation (Flux 2 Pro), compositing,
 video compilation (FFmpeg), and posting into a single pipeline.
 
 Usage:
@@ -17,10 +17,10 @@ Examples:
 """
 import argparse
 import datetime
+import glob
 import os
 import subprocess
 import sys
-from typing import List
 
 from dotenv import load_dotenv
 
@@ -30,12 +30,13 @@ if hasattr(sys.stdout, "reconfigure"):
 
 load_dotenv()
 
-from logger import get_logger
-from history_manager import load_history, save_history, record_post, get_past_topics
+from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
 from fact_generator import generate_fact
-from script_generator import generate_multi_scene_script
-from image_generator import generate_image
 from graphic_builder import build_graphic_card
+from history_manager import get_past_topics, load_history, record_post, save_history
+from image_generator import generate_image
+from logger import get_logger
+from script_generator import generate_multi_scene_script
 from tiktok_poster import post_video_to_tiktok
 
 log = get_logger()
@@ -69,12 +70,12 @@ def run_pipeline(
     # ── 2. Generate fact / script ─────────────────────────────────
     log.info("\n[2/6] Generating carousel script…")
     openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if openrouter_key and not openrouter_key.startswith("sk-or-v1-your_"):
-        fact_data = generate_multi_scene_script(past_topics)
+    if not is_unset_secret(openrouter_key, PLACEHOLDER_OPENROUTER_KEY):
+        fact_data = generate_multi_scene_script(past_topics, history=history)
     else:
         log.warning("OpenRouter API key missing. Carousel requires OpenRouter GPT-4o-mini.")
         # Fallback to single fact
-        fact_data = generate_fact(past_topics)
+        fact_data = generate_fact(past_topics, history=history)
         fact_data["slides"] = [
             {"text": fact_data.get("title", "Did You Know?"), "image_prompt": fact_data.get("image_prompt", "")},
             {"text": fact_data.get("fact_short", ""), "image_prompt": fact_data.get("image_prompt", "")}
@@ -85,25 +86,42 @@ def run_pipeline(
 
     slides = fact_data.get("slides", [])
     total_slides = len(slides)
-    
+
     if total_slides == 0:
         log.error("No slides generated. Aborting.")
         return
 
     # ── 3. Generate Images & Build Cards ─────────────────────────
     log.info(f"\n[3/6] Generating {total_slides} AI background images and compositing cards…")
-    
-    card_paths: List[str] = []
-    
+
+    # Remove stale slide cards from previous runs *before* writing the new
+    # batch. FFmpeg's ``card_slide_%d.jpg`` pattern reads card_slide_1.jpg,
+    # card_slide_2.jpg, … until the first missing file, so leftover cards
+    # from a longer previous run would silently leak into the new video.
+    for stale in glob.glob(os.path.join(_OUTPUT_DIR, "card_slide_*.jpg")):
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
+    # Raw background images are regenerated every run too; clear them so the
+    # output dir never accumulates orphaned files from older runs.
+    for stale in glob.glob(os.path.join(_OUTPUT_DIR, "raw_slide_*.jpg")):
+        try:
+            os.remove(stale)
+        except OSError:
+            pass
+
+    card_paths: list[str] = []
+
     for i, slide in enumerate(slides):
         idx = i + 1
         log.info(f"--- Slide {idx}/{total_slides} ---")
-        
+
         raw_img_path = os.path.join(_OUTPUT_DIR, f"raw_slide_{idx}.jpg")
         card_img_path = os.path.join(_OUTPUT_DIR, f"card_slide_{idx}.jpg")
-        
+
         generate_image(slide["image_prompt"], raw_img_path, size="vertical")
-        
+
         build_graphic_card(
             background_path=raw_img_path,
             slide_text=slide["text"],
@@ -118,22 +136,34 @@ def run_pipeline(
     # ── 4. Compile Video via FFmpeg ──────────────────────────────
     video_path = os.path.join(_OUTPUT_DIR, "carousel_video.mp4")
     log.info(f"\n[4/6] Compiling {total_slides} slides into Video ({video_path})…")
-    
+
     # 2.5 seconds per slide = 1/2.5 framerate (0.4 fps)
     # Using libx264 for high compatibility
     ffmpeg_cmd = [
-        "ffmpeg", "-y", 
-        "-framerate", "1/2.5", 
+        "ffmpeg", "-y",
+        "-framerate", "1/2.5",
         "-i", os.path.join(_OUTPUT_DIR, "card_slide_%d.jpg"),
-        "-c:v", "libx264", 
-        "-r", "30", 
+        "-c:v", "libx264",
+        "-r", "30",
         "-pix_fmt", "yuv420p",
         video_path
     ]
-    
+
     try:
-        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Capture stderr (do not send to DEVNULL) so FFmpeg failures surface
+        # a real diagnostic instead of a generic "failed" message.
+        subprocess.run(
+            ffmpeg_cmd,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
         log.info("Video compiled successfully.")
+    except subprocess.CalledProcessError as e:
+        log.error(f"FFmpeg failed to compile video (exit {e.returncode}):")
+        if e.stderr:
+            log.error(e.stderr[-2000:])
+        return
     except Exception as e:
         log.error(f"FFmpeg failed to compile video: {e}")
         return

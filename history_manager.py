@@ -17,16 +17,16 @@ Usage:
 import datetime
 import json
 import os
-from typing import Any, Dict, List
+from typing import Any
 
 MAX_TOPICS = 2000
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history.json")
 
 
-def load_history() -> Dict[str, Any]:
+def load_history() -> dict[str, Any]:
     """Load history from disk. Returns a fresh structure if file does not exist."""
     if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+        with open(HISTORY_FILE, encoding="utf-8") as f:
             data = json.load(f)
         # Back-fill stats key for old files that don't have it
         data.setdefault("stats", {"total_posts": 0, "last_run": None, "platform_counts": {}})
@@ -38,7 +38,7 @@ def load_history() -> Dict[str, Any]:
     }
 
 
-def save_history(data: Dict[str, Any]) -> None:
+def save_history(data: dict[str, Any]) -> None:
     """
     Persist history to disk.
     Silently trims past_topics to the most recent MAX_TOPICS entries
@@ -50,20 +50,20 @@ def save_history(data: Dict[str, Any]) -> None:
         json.dump(data, f, indent=2, ensure_ascii=False)
 
 
-def get_past_topics(history: Dict[str, Any]) -> List[str]:
+def get_past_topics(history: dict[str, Any]) -> list[str]:
     """Return the list of past topic titles (for de-duplication prompting)."""
     return history.get("past_topics", [])
 
 
-def is_duplicate(history: Dict[str, Any], title: str, fact_short: str) -> bool:
+def is_duplicate(history: dict[str, Any], title: str, fact_short: str) -> bool:
     """
-    Check if a newly generated fact is a duplicate by comparing keywords 
+    Check if a newly generated fact is a duplicate by comparing keywords
     against past_topics. Returns True if a high similarity is found.
     """
     past_topics = get_past_topics(history)
     if not past_topics:
         return False
-        
+
     def _get_keywords(text: str) -> set[str]:
         # Simple lowercase tokenization, ignoring short common words
         words = text.lower().replace(",", "").replace(".", "").split()
@@ -81,15 +81,15 @@ def is_duplicate(history: Dict[str, Any], title: str, fact_short: str) -> bool:
         overlap = new_keywords.intersection(old_keywords)
         if len(overlap) >= 2:
             return True
-            
+
     return False
 
 
 def record_post(
-    history: Dict[str, Any],
-    fact_data: Dict[str, Any],
+    history: dict[str, Any],
+    fact_data: dict[str, Any],
     image_url: str,
-    platforms: List[str],
+    platforms: list[str],
 ) -> None:
     """
     Append a new post entry to past_topics and posts_history, and update stats.

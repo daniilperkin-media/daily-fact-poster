@@ -1,12 +1,14 @@
 """
 TikTok Content Posting API integration for Video uploads (FILE_UPLOAD).
 
-Uses the Direct Post endpoint (/v2/post/publish/inbox/video/init/) 
+Uses the Direct Post endpoint (/v2/post/publish/inbox/video/init/)
 configured for Drafts.
 """
 import os
 import time
+
 import requests
+
 from logger import get_logger
 
 log = get_logger()
@@ -107,12 +109,12 @@ def post_video_to_tiktok(
 
     video_size = os.path.getsize(video_path)
     privacy = privacy_level or os.environ.get("TIKTOK_PRIVACY_LEVEL", _DEFAULT_PRIVACY).strip()
-    
+
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     # ── 1. Init direct-post upload session ────────────────────────
     log.info(f"Initializing TikTok video upload ({video_size} bytes)…")
-    
+
     payload = {
         "post_info": {
             "title": title[:90],
@@ -128,7 +130,7 @@ def post_video_to_tiktok(
         },
         "post_mode": "MEDIA_UPLOAD" # Try Drafts first (preserves caption)
     }
-    
+
     init_res = requests.post(
         "https://open.tiktokapis.com/v2/post/publish/video/init/",
         headers=headers,
@@ -141,7 +143,7 @@ def post_video_to_tiktok(
         code = err.get("code", "")
         msg  = err.get("message", init_res.text[:300])
         log.warning(f"TikTok Direct Post init failed ({init_res.status_code}) [{code}]: {msg}")
-        
+
         # Fallback to Inbox
         log.info("Trying Inbox video/init fallback...")
         payload.pop("post_mode", None)
@@ -171,17 +173,17 @@ def post_video_to_tiktok(
     try:
         with open(video_path, "rb") as f:
             video_data = f.read()
-        
+
         put_headers = {
             "Content-Type": "video/mp4",
             "Content-Range": f"bytes 0-{video_size-1}/{video_size}"
         }
         upload_res = requests.put(upload_url, data=video_data, headers=put_headers, timeout=120)
-        
+
         if upload_res.status_code not in (200, 201):
             log.error(f"TikTok upload transfer failed ({upload_res.status_code}): {upload_res.text[:300]}")
             return False
-            
+
     except Exception as e:
         log.error(f"Failed to upload video data: {e}")
         return False

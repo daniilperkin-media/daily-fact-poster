@@ -1,0 +1,31 @@
+# Ruff configuration for Daily_Fact_Poster.
+#
+# Selects a focused, enforceable rule set (pycodestyle, pyflakes, isort,
+# pyupgrade). Noisier categories that this small pipeline does not adopt
+# project-wide are intentionally NOT selected here so the lint stays
+# blocking and meaningful rather than drowned in style noise:
+#
+#   S    (bandit)        - security heuristics; this pipeline trusts its env
+#   BLE  (blind-except)  - broad `except Exception` is intentional at CLI
+#                          boundaries and in best-effort fallback paths
+#   DTZ  (datetime-tz)   - uploader/voice scripts use naive local time
+#                          deliberately (log timestamps only)
+#   G    (logging-fmt)   - log calls here are simple f-strings
+#   RUF013 (implicit-opt)- peripheral scripts only
+#
+# These can be enabled later as the project matures.
+target-version = "py310"
+line-length = 100
+extend-exclude = ["tiktok_legal", "output", "logs"]
+
+[lint]
+select = ["E", "W", "F", "I", "UP"]
+# E501 (line-too-long): prompt templates and log strings in this pipeline
+# routinely exceed 100 cols and can't be wrapped without altering the
+# emitted prompt text; not worth enforcing project-wide.
+ignore = ["E501"]
+
+[lint.per-file-ignores]
+# main.py intentionally calls load_dotenv() and reconfigures stdout before
+# importing the pipeline modules (so those modules see env vars at import).
+"main.py" = ["E402"]

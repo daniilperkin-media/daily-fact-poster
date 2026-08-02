@@ -1,10 +1,10 @@
-# Python dependencies
-requests>=2.31.0
-pillow>=10.0.0
-boto3>=1.34.0
-python-dotenv>=1.0.0
-edge-tts>=7.0.0
-nest-asyncio>=1.6.0   # needed when running inside Jupyter or other async environments
+# Python dependencies (pinned with upper bounds for reproducible builds)
+requests>=2.31.0,<3.0.0
+pillow>=10.0.0,<12.0.0
+boto3>=1.34.0,<2.0.0
+python-dotenv>=1.0.0,<2.0.0
+edge-tts>=7.0.0,<8.0.0
+nest-asyncio>=1.6.0,<2.0.0   # needed when running inside Jupyter or other async environments
 
 # ──────────────────────────────────────────────────────────────────────────────
 # System dependencies (install separately — NOT via pip)
@@ -15,3 +15,5 @@ nest-asyncio>=1.6.0   # needed when running inside Jupyter or other async enviro
 #   Linux:    sudo apt install ffmpeg
 #
 # Python >= 3.10  (required for X | Y union type hints used in this project)
+#
+# Development / testing dependencies (pytest, ruff) live in requirements-dev.txt
