@@ -6,7 +6,7 @@ Improvements over the original:
 - Uses logger instead of print()
 - Gemini already returns clean JSON with responseMimeType=application/json,
   so no regex stripping is needed (was brittle)
-- Adds 'narration' field to the schema (needed by voice_generator / video pipeline)
+- Adds 'narration' field to the schema (kept for downstream consumers)
 - Includes a virality_score self-check: re-requests once if score < 7
 - Falls back to a hardcoded sample fact on any failure
 """

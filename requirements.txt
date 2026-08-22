@@ -1,15 +1,12 @@
 # Python dependencies (pinned with upper bounds for reproducible builds)
 requests>=2.31.0,<3.0.0
 pillow>=10.0.0,<12.0.0
-boto3>=1.34.0,<2.0.0
 python-dotenv>=1.0.0,<2.0.0
-edge-tts>=7.0.0,<8.0.0
-nest-asyncio>=1.6.0,<2.0.0   # needed when running inside Jupyter or other async environments
 
 # ──────────────────────────────────────────────────────────────────────────────
 # System dependencies (install separately — NOT via pip)
 # ──────────────────────────────────────────────────────────────────────────────
-# FFmpeg >= 6.0  (required for video generation and audio duration probing)
+# FFmpeg >= 6.0  (required for video compilation)
 #   Windows:  winget install Gyan.FFmpeg
 #   macOS:    brew install ffmpeg
 #   Linux:    sudo apt install ffmpeg

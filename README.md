@@ -1,7 +1,7 @@
 # Daily Fact Poster
 
 An automated AI pipeline that generates a daily fact carousel (script, AI
-background images, composited cards, voiceover, and a 9:16 MP4) and publishes
+background images, composited cards, and a 9:16 MP4) and publishes
 the video to **TikTok** — all from a single command.
 
 ---
@@ -20,11 +20,9 @@ main.py
   ├── [4] graphic_builder.py    ← PIL: gradient overlay, pixel-accurate text wrap
   │                                "vertical" (1080×1920) cards
   │
-  ├── [5] voice_generator.py    ← edge-tts (Microsoft Neural TTS, free)
+  ├── [5] FFmpeg slideshow      ← 2.5s per slide, libx264, 30fps, yuv420p
   │
-  ├── [6] FFmpeg slideshow      ← 2.5s per slide, libx264, 30fps, yuv420p
-  │
-  └── [7] tiktok_poster.py      ← TikTok Content Posting API (video upload + poll)
+  └── [6] tiktok_poster.py      ← TikTok Content Posting API (video upload + poll)
 ```
 
 **Support modules:**
@@ -34,7 +32,6 @@ main.py
 - `history_manager.py` — de-duplication history capped at 2000 topics + stats
 - `openrouter_client.py` — OpenRouter chat-completion API client
 - `tiktok_auth.py` / `get_tiktok_user_token.py` — TikTok OAuth helpers
-- `uploader.py` — S3 / tmpfiles.org upload (used by TikTok init)
 
 ---
 
@@ -98,14 +95,9 @@ python main.py --no-tiktok
 | `OPENROUTER_REFERER`   | No       | HTTP-Referer for OpenRouter (default: `https://github.com`) |
 | `OPENROUTER_TITLE`     | No       | X-Title for OpenRouter (default: `Daily Fact Poster`) |
 | `GEMINI_API_KEY`       | No       | Google Gemini key (fallback for single-fact mode when OpenRouter is unset) |
-| `TTS_VOICE`            | No       | edge-tts voice name (default: `en-US-ChristopherNeural`) |
 | `TIKTOK_ACCESS_TOKEN`  | No       | TikTok user access token for direct posting |
 | `TIKTOK_CLIENT_KEY`    | No       | TikTok Client Key (alternative auth method) |
 | `TIKTOK_CLIENT_SECRET` | No       | TikTok Client Secret |
-| `AWS_ACCESS_KEY_ID`    | No       | AWS IAM key for S3 upload |
-| `AWS_SECRET_ACCESS_KEY`| No       | AWS IAM secret |
-| `AWS_REGION`           | No       | S3 bucket region (default: `us-east-1`) |
-| `AWS_S3_BUCKET`        | No       | S3 bucket name |
 
 *If `OPENROUTER_API_KEY` is unset, the pipeline falls back to a single
 Gemini-generated fact (or a hardcoded sample fact if Gemini is also unset).
@@ -140,11 +132,9 @@ Daily_Fact_Poster/
 ├── script_generator.py       ← OpenRouter multi-scene script generation
 ├── image_generator.py        ← OpenRouter Flux 2 Pro image generation
 ├── graphic_builder.py        ← PIL graphic card compositor
-├── voice_generator.py        ← edge-tts neural voiceover
 ├── tiktok_poster.py          ← TikTok API posting + status polling
 ├── tiktok_auth.py            ← TikTok OAuth token helpers
 ├── get_tiktok_user_token.py  ← Interactive TikTok token acquisition
-├── uploader.py               ← S3 / tmpfiles.org upload
 ├── openrouter_client.py      ← OpenRouter API client
 ├── logger.py                 ← Structured logging
 ├── http_utils.py             ← HTTP retry/backoff helpers
