@@ -16,6 +16,7 @@ Examples:
     python main.py --no-tiktok
 """
 import argparse
+import base64
 import datetime
 import glob
 import os
@@ -157,6 +158,7 @@ def run_pipeline(
             check=True,
             capture_output=True,
             text=True,
+            errors="replace",
         )
         log.info("Video compiled successfully.")
     except subprocess.CalledProcessError as e:
@@ -168,16 +170,33 @@ def run_pipeline(
         log.error(f"FFmpeg failed to compile video: {e}")
         return
 
-    # ── 5. Copy caption to Windows clipboard ──────────────────────
+    # ── 5. Copy caption to Windows clipboard ──────────────────────────────
+    # The caption comes from an LLM, so it must never be spliced raw into a
+    # command line or here-string: a caption containing '@ (or any shell
+    # metacharacter) would break out and execute arbitrary PowerShell.
+    # Instead the whole script is built with the caption inside a
+    # single-quoted literal ('' escapes a quote), UTF-16LE-encoded, and
+    # passed via -EncodedCommand so nothing is interpreted by cmd or PS
+    # parsing before it runs.
     try:
+        ps_literal = "'" + caption.replace("'", "''") + "'"
+        ps_script  = f"Set-Clipboard -Value {ps_literal}"
+        encoded = base64.b64encode(ps_script.encode("utf-16-le")).decode("ascii")
         subprocess.run(
-            ["powershell", "-Command", f"Set-Clipboard -Value @'\n{caption}\n'@"],
-            check=False,
-            timeout=5,
+            ["powershell", "-NoProfile", "-EncodedCommand", encoded],
+            check=True,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=15,
         )
         log.info("\n[5/6] Caption copied to clipboard.")
-    except Exception:
-        pass
+    except subprocess.CalledProcessError as e:
+        log.error(f"Failed to copy caption to clipboard (exit {e.returncode}).")
+        if e.stderr:
+            log.error(e.stderr[-2000:])
+    except Exception as e:
+        log.error(f"Failed to copy caption to clipboard: {e}")
 
     # ── Dry-run summary ───────────────────────────────────────────
     if dry_run:
