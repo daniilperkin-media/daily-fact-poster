@@ -16,6 +16,7 @@ Usage:
 """
 import datetime
 import json
+import logging
 import os
 import tempfile
 from typing import Any
@@ -23,20 +24,71 @@ from typing import Any
 MAX_TOPICS = 2000
 HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history.json")
 
+logger = logging.getLogger(__name__)
 
-def load_history() -> dict[str, Any]:
-    """Load history from disk. Returns a fresh structure if file does not exist."""
-    if os.path.exists(HISTORY_FILE):
-        with open(HISTORY_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-        # Back-fill stats key for old files that don't have it
-        data.setdefault("stats", {"total_posts": 0, "last_run": None, "platform_counts": {}})
-        return data
+
+def _fresh_history() -> dict[str, Any]:
+    """Return a new, empty history structure."""
     return {
         "past_topics": [],
         "posts_history": [],
         "stats": {"total_posts": 0, "last_run": None, "platform_counts": {}},
     }
+
+
+def load_history() -> dict[str, Any]:
+    """Load history from disk. Returns a fresh structure if file does not exist.
+
+    A corrupt history.json (e.g. a truncated write from a crash before the
+    atomic swap took effect) is quarantined aside rather than allowed to crash
+    the run — the file is the single source of dedup + stats truth, and losing
+    it silently would re-post already-posted facts the next run.
+    """
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, encoding="utf-8") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            quarantine_path = _quarantine_corrupt_history(exc)
+            logger.warning(
+                "history.json corrupt (%s); quarantined to %s and starting fresh",
+                exc,
+                quarantine_path,
+            )
+            return _fresh_history()
+        if not isinstance(data, dict):
+            quarantine_path = _quarantine_corrupt_history(
+                ValueError("history.json root is not a JSON object")
+            )
+            logger.warning(
+                "history.json malformed (root not an object); quarantined to %s and starting fresh",
+                quarantine_path,
+            )
+            return _fresh_history()
+        # Back-fill stats key for old files that don't have it
+        data.setdefault("stats", {"total_posts": 0, "last_run": None, "platform_counts": {}})
+        return data
+    return _fresh_history()
+
+
+def _quarantine_corrupt_history(exc: BaseException) -> str:
+    """Move a corrupt history file aside so it is not silently re-read.
+
+    A timestamped name keeps successive quarantine events from clobbering a
+    prior copy, giving a recovery trail instead of data loss. If the move fails
+    for any reason, the original file is left in place (the caller already has
+    a fresh in-memory structure, so the run proceeds regardless).
+    """
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    quarantine_path = f"{HISTORY_FILE}.corrupt-{ts}"
+    try:
+        os.replace(HISTORY_FILE, quarantine_path)
+        return quarantine_path
+    except OSError as move_exc:
+        logger.error(
+            "failed to quarantine corrupt history.json (%s)", move_exc
+        )
+        return HISTORY_FILE
 
 
 def save_history(data: dict[str, Any]) -> None:

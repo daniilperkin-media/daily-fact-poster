@@ -204,3 +204,32 @@ class TestLoadSaveHistory:
         data = history_manager.load_history()
         assert "stats" in data
         assert data["stats"]["total_posts"] == 0
+
+    def test_corrupt_json_is_quarantined_and_fresh(self, monkeypatch, tmp_path):
+        """A truncated/corrupt history.json is moved aside (not crashed on), and
+        load_history returns a fresh structure so the run can proceed."""
+        fake_file = tmp_path / "history.json"
+        fake_file.write_text("{ not valid json !!!", encoding="utf-8")
+        monkeypatch.setattr(history_manager, "HISTORY_FILE", str(fake_file))
+
+        data = history_manager.load_history()
+        assert data["past_topics"] == []
+        assert data["stats"]["total_posts"] == 0
+        # The corrupt original was renamed aside, not overwritten.
+        quarantined = [p for p in fake_file.parent.iterdir() if "corrupt" in p.name]
+        assert len(quarantined) == 1
+        assert not fake_file.exists()
+
+    def test_non_object_root_is_quarantined(self, monkeypatch, tmp_path):
+        """A valid-JSON-but-wrong-shape file (root is a list, not object) is
+        also treated as corrupt and quarantined."""
+        import json
+
+        fake_file = tmp_path / "history.json"
+        fake_file.write_text(json.dumps([1, 2, 3]), encoding="utf-8")
+        monkeypatch.setattr(history_manager, "HISTORY_FILE", str(fake_file))
+
+        data = history_manager.load_history()
+        assert data["posts_history"] == []
+        quarantined = [p for p in tmp_path.iterdir() if "corrupt" in p.name]
+        assert len(quarantined) == 1
