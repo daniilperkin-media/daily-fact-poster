@@ -17,6 +17,7 @@ Usage:
 import datetime
 import json
 import os
+import tempfile
 from typing import Any
 
 MAX_TOPICS = 2000
@@ -46,8 +47,22 @@ def save_history(data: dict[str, Any]) -> None:
     """
     if len(data.get("past_topics", [])) > MAX_TOPICS:
         data["past_topics"] = data["past_topics"][-MAX_TOPICS:]
-    with open(HISTORY_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2, ensure_ascii=False)
+    # Atomic write: a plain overwrite truncated by a crash would corrupt the
+    # one file every future run depends on for dedup and stats. Write to a
+    # temp file next to the target, then atomically swap it into place.
+    fd, tmp_path = tempfile.mkstemp(
+        dir=os.path.dirname(HISTORY_FILE), prefix=".history", suffix=".tmp"
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+        os.replace(tmp_path, HISTORY_FILE)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def get_past_topics(history: dict[str, Any]) -> list[str]:

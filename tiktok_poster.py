@@ -139,7 +139,12 @@ def post_video_to_tiktok(
     )
 
     if init_res.status_code != 200:
-        err = init_res.json().get("error", {})
+        # Error bodies may be non-JSON (e.g. HTML from a 502); never let a
+        # parse error here abort the run after the video was fully generated.
+        try:
+            err = init_res.json().get("error", {})
+        except ValueError:
+            err = {}
         code = err.get("code", "")
         msg  = err.get("message", init_res.text[:300])
         log.warning(f"TikTok Direct Post init failed ({init_res.status_code}) [{code}]: {msg}")
@@ -154,7 +159,10 @@ def post_video_to_tiktok(
             timeout=30,
         )
         if init_res.status_code != 200:
-            err = init_res.json().get("error", {})
+            try:
+                err = init_res.json().get("error", {})
+            except ValueError:
+                err = {}
             msg = err.get("message", init_res.text[:300])
             log.error(f"Fallback TikTok init failed: {msg}")
             return False
@@ -164,7 +172,11 @@ def post_video_to_tiktok(
     upload_url = res_data.get("upload_url")
 
     if not publish_id or not upload_url:
-        log.error(f"Missing publish_id or upload_url in TikTok init response: {init_res.json()}")
+        try:
+            debug_body = init_res.json()
+        except ValueError:
+            debug_body = init_res.text[:300]
+        log.error(f"Missing publish_id or upload_url in TikTok init response: {debug_body}")
         return False
 
     log.info(f"Upload initiated. Transferring {video_size} bytes to TikTok…")
@@ -197,8 +209,11 @@ def post_video_to_tiktok(
         log.info("✅ TikTok Video posted successfully to Drafts! Open TikTok -> Me -> Drafts to add music.")
         return True
     elif final_status == "TIMEOUT":
-        log.warning("⏳ TikTok still processing — check your TikTok profile later.")
-        return True
+        # A timed-out poll is NOT a confirmed post: recording success here
+        # would write "posted" into history while the publish was never
+        # confirmed. Fail loudly so the run is retryable/detectable.
+        log.error("⏳ TikTok publish poll timed out without confirmation — treating as failure.")
+        return False
     else:
         log.error(f"❌ TikTok publish ended with status: {final_status}")
         return False

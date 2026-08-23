@@ -46,7 +46,7 @@ _FALLBACK_FACT: dict[str, Any] = {
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
-    "gemini-2.0-flash:generateContent?key={api_key}"
+    "gemini-2.0-flash:generateContent"
 )
 
 
@@ -72,7 +72,6 @@ Respond ONLY with a single valid JSON object (no markdown, no extra text):
 
 def _call_gemini(api_key: str, past_topics_str: str) -> dict[str, Any]:
     """Make one Gemini API call and return parsed JSON dict."""
-    url = _GEMINI_URL.format(api_key=api_key)
     payload = {
         "contents": [{"parts": [{"text": _build_prompt(past_topics_str)}]}],
         "generationConfig": {
@@ -80,7 +79,11 @@ def _call_gemini(api_key: str, past_topics_str: str) -> dict[str, Any]:
             "responseMimeType": "application/json",  # Gemini returns clean JSON — no regex needed
         },
     }
-    response = post_with_retry(url, json=payload, timeout=30, retries=3, backoff=5)
+    # The key goes in the x-goog-api-key header, not the URL: http_utils logs
+    # exception reprs that embed the full request URL, so a query-param key
+    # would leak into logs/daily_fact.log on every transient failure.
+    headers = {"x-goog-api-key": api_key}
+    response = post_with_retry(url=_GEMINI_URL, headers=headers, json=payload, timeout=30, retries=3, backoff=5)
     text_content = response.json()["candidates"][0]["content"]["parts"][0]["text"]
     return json.loads(text_content)
 
