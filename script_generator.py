@@ -83,7 +83,16 @@ Respond ONLY with valid JSON:
 
             title = data.get('title', '')
             fact_short = data.get('fact_short', '')
-            score = data.get('virality_score', 10)
+            try:
+                score = float(data.get('virality_score', 10))
+            except (TypeError, ValueError):
+                score = 0.0
+            slides = data.get('slides')
+            if not isinstance(slides, list) or not slides or not all(
+                isinstance(s, dict) and str(s.get('text', '')).strip() for s in slides
+            ):
+                log.warning(f"Script has missing/invalid slides — regenerating (attempt {attempt+1}/3)…")
+                continue
 
             if is_duplicate(history, title, fact_short):
                 log.warning(f"Generated duplicate fact '{title}' — regenerating (attempt {attempt+1}/3)…")

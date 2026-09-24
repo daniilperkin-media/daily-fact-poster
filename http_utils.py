@@ -18,6 +18,15 @@ from logger import get_logger
 log = get_logger()
 
 
+def _is_retriable(exc: requests.RequestException) -> bool:
+    """Client errors (4xx except 408/429) will not fix themselves — fail fast."""
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return True
+    status = resp.status_code
+    return not (400 <= status < 500) or status in (408, 429)
+
+
 def get_with_retry(
     url: str,
     *,
@@ -26,7 +35,8 @@ def get_with_retry(
     **kwargs: Any,
 ) -> requests.Response:
     """
-    HTTP GET with automatic retry on any RequestException.
+    HTTP GET with automatic retry on transient failures
+    (network errors, 5xx, 408, 429). Other 4xx responses fail immediately.
 
     Args:
         url:     Target URL.
@@ -48,6 +58,8 @@ def get_with_retry(
             return r
         except requests.RequestException as exc:
             last_exc = exc
+            if not _is_retriable(exc):
+                break
             if attempt == retries:
                 break
             wait = backoff * attempt
@@ -67,7 +79,8 @@ def post_with_retry(
     **kwargs: Any,
 ) -> requests.Response:
     """
-    HTTP POST with automatic retry on any RequestException.
+    HTTP POST with automatic retry on transient failures
+    (network errors, 5xx, 408, 429). Other 4xx responses fail immediately.
 
     Args:
         url:     Target URL.
@@ -89,6 +102,8 @@ def post_with_retry(
             return r
         except requests.RequestException as exc:
             last_exc = exc
+            if not _is_retriable(exc):
+                break
             if attempt == retries:
                 break
             wait = backoff * attempt
