@@ -98,6 +98,7 @@ python main.py --no-tiktok
 | `TIKTOK_ACCESS_TOKEN`  | No       | TikTok user access token for direct posting |
 | `TIKTOK_CLIENT_KEY`    | No       | TikTok Client Key (alternative auth method) |
 | `TIKTOK_CLIENT_SECRET` | No       | TikTok Client Secret |
+| `TIKTOK_PRIVACY_LEVEL` | No       | TikTok post privacy level (default: `SELF_ONLY`) |
 
 *If `OPENROUTER_API_KEY` is unset, the pipeline falls back to a single
 Gemini-generated fact (or a hardcoded sample fact if Gemini is also unset).
@@ -125,7 +126,7 @@ schtasks /delete /tn "DailyFactPoster" /f       # remove
 ## File Structure
 
 ```
-Daily_Fact_Poster/
+daily-fact-poster/
 ├── main.py                   ← Unified pipeline entry point (use this)
 ├── constants.py              ← Shared placeholder sentinels + SizeMode type
 ├── fact_generator.py         ← Gemini fact generation (fallback)
@@ -140,8 +141,10 @@ Daily_Fact_Poster/
 ├── http_utils.py             ← HTTP retry/backoff helpers
 ├── history_manager.py        ← Post history & de-duplication
 ├── tests/                    ← pytest test suite
+├── tiktok_legal/             ← TikTok app legal pages (index/privacy/terms)
+├── .github/workflows/ci.yml  ← CI: compileall, ruff, pytest (Python 3.12)
 ├── ruff.toml                 ← Ruff linter config
-├── history.json              ← Post history (committed for CI persistence)
+├── history.json              ← Post history (committed to git)
 ├── fonts/                    ← Place Inter-Bold.ttf / Inter-Regular.ttf here
 │   └── FONTS.md
 ├── output/                   ← Generated files (gitignored)
