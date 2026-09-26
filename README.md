@@ -27,7 +27,7 @@ main.py
 
 **Support modules:**
 - `constants.py` — shared placeholder-sentinel constants and `SizeMode` type
-- `logger.py` — structured timestamps to stdout + rotating `logs/pipeline.log`
+- `logger.py` — structured timestamps to stdout + rotating `logs/<logger-name>.log` (default `logs/daily_fact.log`)
 - `http_utils.py` — GET/POST with automatic retry + exponential backoff
 - `history_manager.py` — de-duplication history capped at 2000 topics + stats
 - `openrouter_client.py` — OpenRouter chat-completion API client
@@ -98,6 +98,7 @@ python main.py --no-tiktok
 | `TIKTOK_ACCESS_TOKEN`  | No       | TikTok user access token for direct posting |
 | `TIKTOK_CLIENT_KEY`    | No       | TikTok Client Key (alternative auth method) |
 | `TIKTOK_CLIENT_SECRET` | No       | TikTok Client Secret |
+| `TIKTOK_REFRESH_TOKEN` | No       | TikTok refresh token (written by `tiktok_auth.py`) |
 | `TIKTOK_PRIVACY_LEVEL` | No       | TikTok post privacy level (default: `SELF_ONLY`) |
 
 *If `OPENROUTER_API_KEY` is unset, the pipeline falls back to a single
@@ -142,6 +143,7 @@ daily-fact-poster/
 ├── history_manager.py        ← Post history & de-duplication
 ├── tests/                    ← pytest test suite
 ├── tiktok_legal/             ← TikTok app legal pages (index/privacy/terms)
+├── tiktok*.txt               ← TikTok developer site-verification file (public; keep at repo root)
 ├── .github/workflows/ci.yml  ← CI: compileall, ruff, pytest (Python 3.12)
 ├── ruff.toml                 ← Ruff linter config
 ├── history.json              ← Post history (committed to git)
