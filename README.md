@@ -1,8 +1,9 @@
 # Daily Fact Poster
 
 An automated AI pipeline that generates a daily fact carousel (script, AI
-background images, composited cards, and a 9:16 MP4) and publishes
-the video to **TikTok** — all from a single command.
+background images, composited cards, and a 9:16 MP4) and uploads the video
+to **TikTok** as a draft in your inbox (finish it in the app) — all from a
+single command.
 
 ---
 
@@ -22,7 +23,8 @@ main.py
   │
   ├── [5] FFmpeg slideshow      ← 2.5s per slide, libx264, 30fps, yuv420p
   │
-  └── [6] tiktok_poster.py      ← TikTok Content Posting API (video upload + poll)
+  └── [6] tiktok_poster.py      ← TikTok Content Posting API (inbox/Drafts upload, status poll,
+                                   automatic access-token refresh)
 ```
 
 **Support modules:**
@@ -31,7 +33,8 @@ main.py
 - `http_utils.py` — GET/POST with automatic retry + exponential backoff
 - `history_manager.py` — de-duplication history capped at 2000 topics + stats
 - `openrouter_client.py` — OpenRouter chat-completion API client
-- `tiktok_auth.py` / `get_tiktok_user_token.py` — TikTok OAuth helpers
+- `tiktok_auth.py` — TikTok OAuth helpers (interactive token acquisition + automatic refresh)
+- `get_tiktok_user_token.py` — older one-click token helper (legacy; prefer `tiktok_auth.py`)
 
 ---
 
@@ -80,9 +83,13 @@ python main.py --dry-run
 # Production — generate and post to TikTok
 python main.py
 
-# Skip TikTok posting (still generates all assets)
+# Skip TikTok posting (still generates all assets and records the topic)
 python main.py --no-tiktok
 ```
+
+`--dry-run` still calls the paid generation APIs (one script call + one
+image per slide); it only skips posting and the history update. FFmpeg must
+be installed and on `PATH`.
 
 ---
 
@@ -95,20 +102,56 @@ python main.py --no-tiktok
 | `OPENROUTER_REFERER`   | No       | HTTP-Referer for OpenRouter (default: `https://github.com`) |
 | `OPENROUTER_TITLE`     | No       | X-Title for OpenRouter (default: `Daily Fact Poster`) |
 | `GEMINI_API_KEY`       | No       | Google Gemini key (fallback for single-fact mode when OpenRouter is unset) |
-| `TIKTOK_ACCESS_TOKEN`  | No       | TikTok user access token for direct posting |
-| `TIKTOK_CLIENT_KEY`    | No       | TikTok Client Key (alternative auth method) |
-| `TIKTOK_CLIENT_SECRET` | No       | TikTok Client Secret |
-| `TIKTOK_REFRESH_TOKEN` | No       | TikTok refresh token (written by `tiktok_auth.py`) |
-| `TIKTOK_PRIVACY_LEVEL` | No       | TikTok post privacy level (default: `SELF_ONLY`) |
+| `TIKTOK_ACCESS_TOKEN`  | No       | TikTok user access token (auto-refreshed when expired) |
+| `TIKTOK_CLIENT_KEY`    | No       | TikTok Client Key (used by `tiktok_auth.py` to obtain/refresh tokens) |
+| `TIKTOK_CLIENT_SECRET` | No       | TikTok Client Secret (used by `tiktok_auth.py`) |
+| `TIKTOK_REFRESH_TOKEN` | No       | Written by `tiktok_auth.py`; used to auto-refresh the access token |
+| `TIKTOK_PRIVACY_LEVEL` | No       | TikTok post privacy level for direct posts (default: `SELF_ONLY`) |
 
-*If `OPENROUTER_API_KEY` is unset, the pipeline falls back to a single
-Gemini-generated fact (or a hardcoded sample fact if Gemini is also unset).
+*If `OPENROUTER_API_KEY` is unset, script generation falls back to a single
+Gemini-generated fact (or a hardcoded sample fact if Gemini is also unset),
+turned into a minimal 2-slide carousel. Image generation always needs
+`OPENROUTER_API_KEY`, so a keyless run stops with a clear message before
+spending any image API calls.
+
+---
+
+## TikTok posting behaviour
+
+- The video is uploaded to your TikTok **inbox/Drafts** first (the documented
+  upload flow). Delivery is confirmed by the `SEND_TO_USER_INBOX` status —
+  open the TikTok app to finish the post; the caption is copied to your
+  clipboard for you.
+- If the inbox path is unavailable, the tool falls back to a **Direct Post**
+  attempt. Unaudited API clients can only publish private-viewing content;
+  public posts require TikTok's Content Posting API audit.
+- `TIKTOK_PRIVACY_LEVEL` defaults to `SELF_ONLY`. For direct posts the value
+  is checked against the account's allowed privacy options (creator info API)
+  and falls back to `SELF_ONLY` when it is not allowed.
+- Access tokens expire after ~24 h. When `TIKTOK_REFRESH_TOKEN` is set, an
+  expired token is refreshed automatically and the rotated pair is written
+  back to `.env`. Re-run `python tiktok_auth.py` if the refresh token itself
+  is missing or older than a year.
+- The `.env.example` placeholder values are detected and ignored, so a copied
+  template can never hit the TikTok API with fake credentials.
 
 ---
 
 ## Scheduling (Windows)
 
-Run `scheduler_windows.bat` **as Administrator** once to register a Windows Task Scheduler job that runs `main.py` every day at 9:00 AM:
+Prerequisites on the machine that runs the task:
+
+```bash
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+```
+
+plus a `.env` with real API keys and FFmpeg on `PATH`.
+
+Run `scheduler_windows.bat` **as Administrator** once to register a Windows
+Task Scheduler job that runs `main.py` every day at 9:00 AM. The script
+prefers `.venv\Scripts\python.exe` when it exists and registers the task with
+`/it` (runs while you are logged on):
 
 ```batch
 scheduler_windows.bat
@@ -121,6 +164,11 @@ schtasks /query  /tn "DailyFactPoster"          # check status
 schtasks /change /tn "DailyFactPoster" /st 08:00  # change time
 schtasks /delete /tn "DailyFactPoster" /f       # remove
 ```
+
+The task appends console output to `logs/scheduler.log`; the pipeline itself
+writes `logs/daily_fact.log`. Check both for the first few days. The task is
+**not** registered by default — registering it is a deliberate step to take
+once `.env` is configured.
 
 ---
 
@@ -135,14 +183,15 @@ daily-fact-poster/
 ├── image_generator.py        ← OpenRouter Flux 2 Pro image generation
 ├── graphic_builder.py        ← PIL graphic card compositor
 ├── tiktok_poster.py          ← TikTok API posting + status polling
-├── tiktok_auth.py            ← TikTok OAuth token helpers
-├── get_tiktok_user_token.py  ← Interactive TikTok token acquisition
+├── tiktok_auth.py            ← OAuth token helpers + automatic access-token refresh
+├── get_tiktok_user_token.py  ← One-click token helper (legacy; prefer tiktok_auth.py)
 ├── openrouter_client.py      ← OpenRouter API client
 ├── logger.py                 ← Structured logging
 ├── http_utils.py             ← HTTP retry/backoff helpers
 ├── history_manager.py        ← Post history & de-duplication
 ├── tests/                    ← pytest test suite
 ├── tiktok_legal/             ← TikTok app legal pages (index/privacy/terms)
+├── tiktok_app_icon.jpg       ← App icon asset for the TikTok developer portal
 ├── tiktok*.txt               ← TikTok developer site-verification file (public; keep at repo root)
 ├── .github/workflows/ci.yml  ← CI: compileall, ruff, pytest (Python 3.12)
 ├── ruff.toml                 ← Ruff linter config
