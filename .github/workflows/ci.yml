@@ -1,3 +1,14 @@
+# Continuous integration for the Daily Fact Poster pipeline.
+#
+# Gates (identical to the local ones):
+#   1. compileall — syntax check for every module
+#   2. ruff check — lint
+#   3. pytest     — unit tests + the offline end-to-end smoke test
+#                   (script/image generation mocked, real FFmpeg + card
+#                   builder; skipped automatically when FFmpeg is missing)
+#
+# Python 3.10 is the documented floor, 3.12 the development version; the
+# Windows leg mirrors the production environment (scheduler + clipboard).
 name: CI
 
 on:
@@ -5,17 +16,33 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   python-checks:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.10", "3.12"]
+        include:
+          - os: windows-latest
+            python-version: "3.12"
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python 3.12
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Syntax-check pipeline modules (compile-only, no heavy imports)
         run: python -m compileall -q .
@@ -27,5 +54,5 @@ jobs:
       - name: Lint
         run: python -m ruff check .
 
-      - name: Test
+      - name: Test (unit + offline end-to-end smoke)
         run: python -m pytest tests -q
