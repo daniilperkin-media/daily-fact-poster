@@ -10,7 +10,7 @@ single command.
 ## Architecture
 
 ```
-main.py
+main.py  →  daily_fact_poster/pipeline.py
   │
   ├── [2] script_generator.py   ← OpenRouter GPT-4o-mini multi-scene script
   │                                (falls back to Gemini single-fact if no key)
@@ -27,14 +27,15 @@ main.py
                                    automatic access-token refresh)
 ```
 
-**Support modules:**
+**Support modules** (all in the `daily_fact_poster/` package):
 - `constants.py` — shared placeholder-sentinel constants and `SizeMode` type
 - `logger.py` — structured timestamps to stdout + rotating `logs/<logger-name>.log` (default `logs/daily_fact.log`)
 - `http_utils.py` — GET/POST with automatic retry + exponential backoff
 - `history_manager.py` — de-duplication history capped at 2000 topics + stats
 - `openrouter_client.py` — OpenRouter chat-completion API client
-- `tiktok_auth.py` — TikTok OAuth helpers (interactive token acquisition + automatic refresh)
-- `get_tiktok_user_token.py` — older one-click token helper (legacy; prefer `tiktok_auth.py`)
+- `tiktok_auth.py` — TikTok OAuth helpers (interactive token acquisition + automatic refresh; run via `python -m daily_fact_poster.tiktok_auth`)
+- `paths.py` — repository-root resolver (`REPO_ROOT`) shared by the other modules
+- `tools/get_tiktok_user_token.py` — older one-click token helper (legacy; prefer `tiktok_auth.py`)
 
 ---
 
@@ -130,7 +131,7 @@ spending any image API calls.
   and falls back to `SELF_ONLY` when it is not allowed.
 - Access tokens expire after ~24 h. When `TIKTOK_REFRESH_TOKEN` is set, an
   expired token is refreshed automatically and the rotated pair is written
-  back to `.env`. Re-run `python tiktok_auth.py` if the refresh token itself
+  back to `.env`. Re-run `python -m daily_fact_poster.tiktok_auth` if the refresh token itself
   is missing or older than a year.
 - The `.env.example` placeholder values are detected and ignored, so a copied
   template can never hit the TikTok API with fake credentials.
@@ -176,24 +177,28 @@ once `.env` is configured.
 
 ```
 daily-fact-poster/
-├── main.py                   ← Unified pipeline entry point (use this)
-├── constants.py              ← Shared placeholder sentinels + SizeMode type
-├── fact_generator.py         ← Gemini fact generation (fallback)
-├── script_generator.py       ← OpenRouter multi-scene script generation
-├── image_generator.py        ← OpenRouter Flux 2 Pro image generation
-├── graphic_builder.py        ← PIL graphic card compositor
-├── tiktok_poster.py          ← TikTok API posting + status polling
-├── tiktok_auth.py            ← OAuth token helpers + automatic access-token refresh
-├── get_tiktok_user_token.py  ← One-click token helper (legacy; prefer tiktok_auth.py)
-├── openrouter_client.py      ← OpenRouter API client
-├── logger.py                 ← Structured logging
-├── http_utils.py             ← HTTP retry/backoff helpers
-├── history_manager.py        ← Post history & de-duplication
+├── main.py                   ← Entry point wrapper (`python main.py` — use this)
+├── daily_fact_poster/        ← Pipeline package
+│   ├── pipeline.py           ← Orchestrator: full run + CLI
+│   ├── constants.py          ← Shared placeholder sentinels + SizeMode type
+│   ├── fact_generator.py     ← Gemini fact generation (fallback)
+│   ├── script_generator.py   ← OpenRouter multi-scene script generation
+│   ├── image_generator.py    ← OpenRouter Flux 2 Pro image generation
+│   ├── graphic_builder.py    ← PIL graphic card compositor
+│   ├── tiktok_poster.py      ← TikTok API posting + status polling
+│   ├── tiktok_auth.py        ← OAuth token helpers + automatic access-token refresh
+│   ├── openrouter_client.py  ← OpenRouter API client
+│   ├── logger.py             ← Structured logging
+│   ├── http_utils.py         ← HTTP retry/backoff helpers
+│   ├── history_manager.py    ← Post history & de-duplication
+│   └── paths.py              ← Repository-root resolver (REPO_ROOT)
+├── tools/
+│   └── get_tiktok_user_token.py  ← One-click token helper (legacy; prefer tiktok_auth.py)
 ├── tests/                    ← pytest test suite
 ├── tiktok_legal/             ← TikTok app legal pages (index/privacy/terms)
 ├── tiktok_app_icon.jpg       ← App icon asset for the TikTok developer portal
 ├── tiktok*.txt               ← TikTok developer site-verification file (public; keep at repo root)
-├── .github/workflows/ci.yml  ← CI: compileall, ruff, pytest (Python 3.12)
+├── .github/workflows/ci.yml  ← CI: compileall, ruff, pytest incl. offline E2E smoke (3.10/3.12 + Windows)
 ├── ruff.toml                 ← Ruff linter config
 ├── history.json              ← Post history (committed to git)
 ├── fonts/                    ← Place Inter-Bold.ttf / Inter-Regular.ttf here
