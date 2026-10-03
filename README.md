@@ -108,6 +108,7 @@ fonts/                     ← optional bundled fonts (see FONTS.md)
 history.json               ← post history (committed to git)
 output/ · logs/ · .env     ← generated files / logs / credentials (all gitignored)
 scheduler_windows.bat · ruff.toml · requirements.txt · requirements-dev.txt
+AGENTS.md · README.md      ← agent working rules / project documentation
 .github/workflows/ci.yml   ← CI: compileall + ruff + pytest (py3.10/3.12 + Windows)
 ```
 
