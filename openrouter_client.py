@@ -8,9 +8,8 @@ Improvements over the original:
 """
 import os
 
-import requests
-
 from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
+from http_utils import post_with_retry
 from logger import get_logger
 
 log = get_logger()
@@ -62,13 +61,14 @@ def call_openrouter_llm(
     }
 
     log.info(f"Calling OpenRouter ({target_model})…")
-    res = requests.post(
+    # Route through http_utils so transient failures (429/5xx/network) get the
+    # same retry + backoff treatment as every other API call in the pipeline.
+    res = post_with_retry(
         "https://openrouter.ai/api/v1/chat/completions",
         headers=headers,
         json=payload,
         timeout=60,
     )
-    res.raise_for_status()
 
     try:
         return res.json()["choices"][0]["message"]["content"]
