@@ -5,10 +5,20 @@ import urllib.parse
 import requests
 from dotenv import load_dotenv
 
+from constants import (
+    PLACEHOLDER_TIKTOK_CLIENT_KEY,
+    PLACEHOLDER_TIKTOK_CLIENT_SECRET,
+    PLACEHOLDER_TIKTOK_REFRESH_TOKEN,
+    is_unset_secret,
+)
+from logger import get_logger
 
-def update_env_file(key: str, value: str):
-    """Update a specific key in the .env file safely."""
-    env_file = ".env"
+log = get_logger()
+
+
+def update_env_file(key: str, value: str) -> None:
+    """Update a specific key in the project's .env file safely."""
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.exists(env_file):
         with open(env_file, "w") as f:
             f.write("")
@@ -26,6 +36,69 @@ def update_env_file(key: str, value: str):
                 f.write(line)
         if not key_found:
             f.write(f"\n{key}={value}\n")
+
+def refresh_access_token() -> str | None:
+    """
+    Exchange the stored refresh token for a fresh access token.
+
+    TikTok user access tokens expire after roughly 24 hours; the refresh
+    token is long-lived (and rotates on every use), so this keeps scheduled
+    runs working without manual re-authorization. Updated values are
+    persisted to .env and os.environ (used automatically by tiktok_poster).
+
+    Returns:
+        The new access token, or None when a refresh is not possible.
+    """
+    client_key = os.environ.get("TIKTOK_CLIENT_KEY", "").strip()
+    client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "").strip()
+    refresh_token = os.environ.get("TIKTOK_REFRESH_TOKEN", "").strip()
+
+    if (
+        is_unset_secret(client_key, PLACEHOLDER_TIKTOK_CLIENT_KEY)
+        or is_unset_secret(client_secret, PLACEHOLDER_TIKTOK_CLIENT_SECRET)
+        or is_unset_secret(refresh_token, PLACEHOLDER_TIKTOK_REFRESH_TOKEN)
+    ):
+        log.info("TikTok token refresh skipped: client credentials or refresh token missing.")
+        return None
+
+    try:
+        response = requests.post(
+            "https://open.tiktokapis.com/v2/oauth/token/",
+            data={
+                "client_key": client_key,
+                "client_secret": client_secret,
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=30,
+        )
+    except requests.RequestException as e:
+        log.warning(f"TikTok token refresh request failed: {e}")
+        return None
+
+    if response.status_code != 200:
+        log.warning(f"TikTok token refresh failed ({response.status_code}): {response.text[:200]}")
+        return None
+
+    data = response.json()
+    access_token = data.get("access_token", "")
+    if not access_token:
+        log.warning("TikTok token refresh response contained no access_token.")
+        return None
+
+    new_refresh = data.get("refresh_token") or refresh_token
+    os.environ["TIKTOK_ACCESS_TOKEN"] = access_token
+    os.environ["TIKTOK_REFRESH_TOKEN"] = new_refresh
+    try:
+        update_env_file("TIKTOK_ACCESS_TOKEN", access_token)
+        update_env_file("TIKTOK_REFRESH_TOKEN", new_refresh)
+    except OSError as e:
+        log.warning(f"Refreshed tokens could not be persisted to .env: {e}")
+
+    log.info("TikTok access token refreshed successfully.")
+    return access_token
+
 
 def main():
     print("==================================================")

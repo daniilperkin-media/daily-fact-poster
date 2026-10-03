@@ -23,6 +23,12 @@ SizeMode = Literal["square", "vertical"]
 PLACEHOLDER_OPENROUTER_KEY = "sk-or-v1-your-openrouter-api-key"
 PLACEHOLDER_GEMINI_KEY = "AIzaSy_your_gemini_api_key"
 
+# TikTok placeholder credentials (must match .env.example)
+PLACEHOLDER_TIKTOK_CLIENT_KEY = "sbawrs...your_client_key_here"
+PLACEHOLDER_TIKTOK_CLIENT_SECRET = "your_client_secret_here"
+PLACEHOLDER_TIKTOK_ACCESS_TOKEN = "act.zv1...your_user_access_token_here"
+PLACEHOLDER_TIKTOK_REFRESH_TOKEN = "your_refresh_token_here"
+
 
 def is_unset_secret(value: str, placeholder: str) -> bool:
     """
