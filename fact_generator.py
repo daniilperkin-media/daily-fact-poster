@@ -7,7 +7,8 @@ Improvements over the original:
 - Gemini already returns clean JSON with responseMimeType=application/json,
   so no regex stripping is needed (was brittle)
 - Adds 'narration' field to the schema (kept for downstream consumers)
-- Includes a virality_score self-check: re-requests once if score < 7
+- Retries generation (max 3 attempts) while the fact duplicates history or
+  scores below 7 on the virality self-check
 - Falls back to a hardcoded sample fact on any failure
 """
 import json
@@ -43,6 +44,23 @@ _FALLBACK_FACT: dict[str, Any] = {
     ),
     "virality_score": 8,
 }
+
+
+def fact_to_slides(fact: dict[str, Any]) -> list[dict[str, str]]:
+    """
+    Convert a single-fact dict into a minimal 2-slide carousel script.
+
+    Used whenever a fallback path supplies a fact but no slides, so the
+    pipeline can still render and publish a video instead of aborting.
+    """
+    title = str(fact.get("title", "")).strip() or "Did You Know?"
+    fact_short = str(fact.get("fact_short", "")).strip()
+    image_prompt = str(fact.get("image_prompt", "")).strip()
+    slides = [{"text": title, "image_prompt": image_prompt}]
+    if fact_short:
+        slides.append({"text": fact_short, "image_prompt": image_prompt})
+    return slides
+
 
 _GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"

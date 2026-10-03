@@ -72,4 +72,7 @@ def test_invalid_slides_regenerated(_env, monkeypatch):
 
 def test_all_invalid_falls_back(_env, monkeypatch):
     monkeypatch.setattr(script_generator, "call_openrouter_llm", lambda *a: NO_SLIDES)
-    assert script_generator.generate_multi_scene_script([], history={}) == {"fallback": True}
+    result = script_generator.generate_multi_scene_script([], history={})
+    assert result["fallback"] is True
+    # Fallback facts gain a synthesised slide list so the pipeline can still render.
+    assert result["slides"][0]["text"] == "Did You Know?"

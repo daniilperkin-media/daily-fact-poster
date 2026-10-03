@@ -8,8 +8,9 @@ Usage:
     python main.py [options]
 
 Options:
-    --dry-run       Generate all local files; skip live social media posts
-    --no-tiktok     Skip TikTok posting
+    --dry-run       Generate all local files; skip live social media posts.
+                    Note: still calls the paid generation APIs (script + images).
+    --no-tiktok     Skip TikTok posting (the topic is still recorded in history).
 
 Examples:
     python main.py --dry-run
@@ -32,7 +33,7 @@ if hasattr(sys.stdout, "reconfigure"):
 load_dotenv()
 
 from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
-from fact_generator import generate_fact
+from fact_generator import fact_to_slides
 from graphic_builder import build_graphic_card
 from history_manager import get_past_topics, load_history, record_post, save_history
 from image_generator import generate_image
@@ -50,9 +51,13 @@ _OUTPUT_DIR = os.path.join(_BASE_DIR, "output")
 def run_pipeline(
     dry_run:      bool = False,
     with_tiktok:  bool = True,
-) -> None:
+) -> bool:
     """
     Run the full content-generation and social-publishing pipeline.
+
+    Returns:
+        True  when the pipeline produced its full output (or completed a dry run).
+        False when it aborted early (no usable video was generated).
     """
     sep = "=" * 60
     log.info(sep)
@@ -70,17 +75,14 @@ def run_pipeline(
 
     # ── 2. Generate fact / script ─────────────────────────────────
     log.info("\n[2/6] Generating carousel script…")
-    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not is_unset_secret(openrouter_key, PLACEHOLDER_OPENROUTER_KEY):
-        fact_data = generate_multi_scene_script(past_topics, history=history)
-    else:
-        log.warning("OpenRouter API key missing. Carousel requires OpenRouter GPT-4o-mini.")
-        # Fallback to single fact
-        fact_data = generate_fact(past_topics, history=history)
-        fact_data["slides"] = [
-            {"text": fact_data.get("title", "Did You Know?"), "image_prompt": fact_data.get("image_prompt", "")},
-            {"text": fact_data.get("fact_short", ""), "image_prompt": fact_data.get("image_prompt", "")}
-        ]
+    # generate_multi_scene_script handles the missing-key and API-failure
+    # cases internally and falls back to a Gemini/sample fact.
+    fact_data = generate_multi_scene_script(past_topics, history=history)
+
+    # Fallback facts carry no slides — synthesise a minimal carousel so a
+    # degraded run still ends with a real video instead of aborting.
+    if not fact_data.get("slides"):
+        fact_data["slides"] = fact_to_slides(fact_data)
 
     log.info(f"  ► [{fact_data.get('category')}] {fact_data.get('title')}")
     caption = fact_data.get("caption", "")
@@ -90,7 +92,7 @@ def run_pipeline(
 
     if total_slides == 0:
         log.error("No slides generated. Aborting.")
-        return
+        return False
 
     # ── 3. Generate Images & Build Cards ─────────────────────────
     log.info(f"\n[3/6] Generating {total_slides} AI background images and compositing cards…")
@@ -112,7 +114,16 @@ def run_pipeline(
         except OSError:
             pass
 
+    openrouter_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    if is_unset_secret(openrouter_key, PLACEHOLDER_OPENROUTER_KEY):
+        log.error(
+            "OPENROUTER_API_KEY is not set — image generation cannot run.\n"
+            "Add the key to .env (see .env.example), then re-run."
+        )
+        return False
+
     card_paths: list[str] = []
+    image_failures = 0
 
     for i, slide in enumerate(slides):
         idx = i + 1
@@ -121,7 +132,14 @@ def run_pipeline(
         raw_img_path = os.path.join(_OUTPUT_DIR, f"raw_slide_{idx}.jpg")
         card_img_path = os.path.join(_OUTPUT_DIR, f"card_slide_{idx}.jpg")
 
-        generate_image(slide["image_prompt"], raw_img_path, size="vertical")
+        try:
+            generate_image(slide.get("image_prompt", ""), raw_img_path, size="vertical")
+        except Exception as e:
+            # A single failed background image must not kill the run: the card
+            # builder falls back to a dark canvas when the file is missing, and
+            # the run only aborts if every image failed.
+            image_failures += 1
+            log.warning(f"Image generation failed for slide {idx} ({e}) — using dark canvas fallback.")
 
         build_graphic_card(
             background_path=raw_img_path,
@@ -133,6 +151,10 @@ def run_pipeline(
             total_slides=total_slides
         )
         card_paths.append(card_img_path)
+
+    if image_failures == total_slides:
+        log.error("All slide background images failed to generate — aborting.")
+        return False
 
     # ── 4. Compile Video via FFmpeg ──────────────────────────────
     video_path = os.path.join(_OUTPUT_DIR, "carousel_video.mp4")
@@ -165,10 +187,10 @@ def run_pipeline(
         log.error(f"FFmpeg failed to compile video (exit {e.returncode}):")
         if e.stderr:
             log.error(e.stderr[-2000:])
-        return
+        return False
     except Exception as e:
         log.error(f"FFmpeg failed to compile video: {e}")
-        return
+        return False
 
     # ── 5. Copy caption to Windows clipboard ──────────────────────────────
     # The caption comes from an LLM, so it must never be spliced raw into a
@@ -205,7 +227,7 @@ def run_pipeline(
         log.info(f"  Video path: file:///{video_path.replace(chr(92), '/')}")
         log.info(f"\nCaption:\n{'-' * 50}\n{caption}\n{'-' * 50}")
         log.info(sep)
-        return
+        return True
 
     # ── 6. Post to platforms ─────────────────────────────────────────
     log.info("\n[6/6] Publishing to TikTok…")
@@ -230,6 +252,7 @@ def run_pipeline(
     log.info("🎉  Pipeline completed!")
     log.info(f"\n📋  CAPTION (also in clipboard):\n{'-' * 50}\n{caption}\n{'-' * 50}")
     log.info(sep)
+    return True
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -244,7 +267,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        run_pipeline(
+        ok = run_pipeline(
             dry_run=args.dry_run,
             with_tiktok=not args.no_tiktok,
         )
@@ -254,3 +277,7 @@ if __name__ == "__main__":
     except Exception as err:
         log.error(f"\n❌ Pipeline failed: {err}", exc_info=True)
         sys.exit(1)
+
+    # Non-zero exit so scheduled runs and automation can detect an aborted
+    # pipeline instead of reporting success.
+    sys.exit(0 if ok else 1)

@@ -11,7 +11,7 @@ Usage:
     history    = load_history()
     past_topics = get_past_topics(history)
     # … run pipeline …
-    record_post(history, fact_data, image_url, platforms=["TikTok", "Telegram"])
+    record_post(history, fact_data, video_path, platforms=["TikTok"])
     save_history(history)
 """
 import datetime
@@ -164,7 +164,7 @@ def record_post(
     Args:
         history:    The dict returned by load_history().
         fact_data:  The fact dict from generate_fact / generate_multi_scene_script.
-        image_url:  The public URL of the uploaded graphic card.
+        image_url:  Local path (or URL) of the video the run produced, kept for reference.
         platforms:  List of platform names where posting succeeded, e.g. ["TikTok"].
     """
     topic = fact_data.get("title", "")

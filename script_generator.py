@@ -11,12 +11,22 @@ import re
 from typing import Any
 
 from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
+from fact_generator import fact_to_slides
 from fact_generator import generate_fact as fallback_gemini_fact
 from history_manager import is_duplicate, load_history
 from logger import get_logger
 from openrouter_client import call_openrouter_llm
 
 log = get_logger()
+
+
+def _ensure_slides(fact: dict[str, Any]) -> dict[str, Any]:
+    """Guarantee a non-empty slides list (fallback facts carry none)."""
+    if fact.get("slides"):
+        return fact
+    fact = dict(fact)
+    fact["slides"] = fact_to_slides(fact)
+    return fact
 
 
 def generate_multi_scene_script(
@@ -42,7 +52,7 @@ def generate_multi_scene_script(
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if is_unset_secret(api_key, PLACEHOLDER_OPENROUTER_KEY):
         log.info("OPENROUTER_API_KEY not set — using Gemini fallback for fact generation.")
-        return fallback_gemini_fact(past_topics, history=history)
+        return _ensure_slides(fallback_gemini_fact(past_topics, history=history))
 
     past_topics_str = ", ".join(past_topics[-150:]) if past_topics else "None"
     # Only load history from disk if the caller did not pass it in. The main
@@ -111,4 +121,4 @@ Respond ONLY with valid JSON:
             log.warning(f"OpenRouter script generation failed on attempt {attempt+1} ({e})")
 
     log.warning("All attempts failed or resulted in low score/duplicates — using Gemini fallback.")
-    return fallback_gemini_fact(past_topics, history=history)
+    return _ensure_slides(fallback_gemini_fact(past_topics, history=history))
