@@ -6,7 +6,7 @@ Persists past_topics (used to avoid duplicate content) and posts_history
 history.json never grows unboundedly.
 
 Usage:
-    from history_manager import load_history, save_history, record_post, get_past_topics
+    from .history_manager import load_history, save_history, record_post, get_past_topics
 
     history    = load_history()
     past_topics = get_past_topics(history)
@@ -21,8 +21,10 @@ import os
 import tempfile
 from typing import Any
 
+from .paths import REPO_ROOT
+
 MAX_TOPICS = 2000
-HISTORY_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "history.json")
+HISTORY_FILE = os.path.join(REPO_ROOT, "history.json")
 
 logger = logging.getLogger(__name__)
 

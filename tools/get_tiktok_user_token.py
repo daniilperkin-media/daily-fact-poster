@@ -70,7 +70,7 @@ def get_user_token():
         print("\n🎉 SUCCESS! Received User Access Token!")
 
         # Save to .env file automatically
-        env_path = os.path.join(os.path.dirname(__file__), ".env")
+        env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env")
         with open(env_path, "a", encoding="utf-8") as f:
             f.write(f"\nTIKTOK_ACCESS_TOKEN={access_token}\n")
 

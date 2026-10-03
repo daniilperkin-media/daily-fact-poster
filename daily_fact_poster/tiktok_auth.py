@@ -5,20 +5,21 @@ import urllib.parse
 import requests
 from dotenv import load_dotenv
 
-from constants import (
+from .constants import (
     PLACEHOLDER_TIKTOK_CLIENT_KEY,
     PLACEHOLDER_TIKTOK_CLIENT_SECRET,
     PLACEHOLDER_TIKTOK_REFRESH_TOKEN,
     is_unset_secret,
 )
-from logger import get_logger
+from .logger import get_logger
+from .paths import REPO_ROOT
 
 log = get_logger()
 
 
 def update_env_file(key: str, value: str) -> None:
     """Update a specific key in the project's .env file safely."""
-    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    env_file = os.path.join(REPO_ROOT, ".env")
     if not os.path.exists(env_file):
         with open(env_file, "w") as f:
             f.write("")

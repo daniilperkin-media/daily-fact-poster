@@ -1,7 +1,7 @@
 """Tests for graphic_builder: pixel wrapping and the missing-background fallback."""
 from PIL import Image, ImageDraw, ImageFont
 
-import graphic_builder
+from daily_fact_poster import graphic_builder
 
 
 def _draw():

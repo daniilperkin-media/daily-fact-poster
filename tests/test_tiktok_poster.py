@@ -3,8 +3,8 @@ from unittest import mock
 
 import pytest
 
-import tiktok_poster
-from constants import PLACEHOLDER_TIKTOK_ACCESS_TOKEN
+from daily_fact_poster import tiktok_poster
+from daily_fact_poster.constants import PLACEHOLDER_TIKTOK_ACCESS_TOKEN
 
 
 @pytest.fixture(autouse=True)

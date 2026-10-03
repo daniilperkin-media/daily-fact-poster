@@ -11,8 +11,9 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-from constants import SizeMode
-from logger import get_logger
+from .constants import SizeMode
+from .logger import get_logger
+from .paths import REPO_ROOT
 
 log = get_logger()
 
@@ -32,8 +33,6 @@ CATEGORY_COLORS: dict[str, tuple[int, int, int]] = {
 }
 _DEFAULT_ACCENT: tuple[int, int, int] = (255, 180, 0)
 
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
 
 # ── Internal helpers ───────────────────────────────────────────────────────────
 
@@ -43,9 +42,9 @@ def _get_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     """
     candidates = [
         # Bundled
-        os.path.join(_BASE_DIR, "fonts", "Inter-Bold.ttf" if bold else "Inter-Regular.ttf"),
-        os.path.join(_BASE_DIR, "fonts", "Inter-Bold.ttf"),
-        os.path.join(_BASE_DIR, "fonts", "Inter-Regular.ttf"),
+        os.path.join(REPO_ROOT, "fonts", "Inter-Bold.ttf" if bold else "Inter-Regular.ttf"),
+        os.path.join(REPO_ROOT, "fonts", "Inter-Bold.ttf"),
+        os.path.join(REPO_ROOT, "fonts", "Inter-Regular.ttf"),
         # Windows
         "C:/Windows/Fonts/segoeui.ttf",
         "C:/Windows/Fonts/arial.ttf",

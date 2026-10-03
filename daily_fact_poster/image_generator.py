@@ -9,9 +9,9 @@ import re
 
 import requests
 
-from constants import PLACEHOLDER_OPENROUTER_KEY, SizeMode, is_unset_secret
-from http_utils import get_with_retry, post_with_retry
-from logger import get_logger
+from .constants import PLACEHOLDER_OPENROUTER_KEY, SizeMode, is_unset_secret
+from .http_utils import get_with_retry, post_with_retry
+from .logger import get_logger
 
 log = get_logger()
 

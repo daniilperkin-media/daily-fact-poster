@@ -6,17 +6,9 @@ Targets:
     - record_post
     - load_history / save_history (against a temp file)
 """
-import os
-import sys
-
 import pytest
 
-_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
-_DFP_DIR = os.path.dirname(_THIS_DIR)
-if _DFP_DIR not in sys.path:
-    sys.path.insert(0, _DFP_DIR)
-
-import history_manager  # noqa: E402
+from daily_fact_poster import history_manager
 
 
 @pytest.fixture

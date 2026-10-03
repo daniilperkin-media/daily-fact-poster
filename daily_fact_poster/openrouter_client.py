@@ -8,9 +8,9 @@ Improvements over the original:
 """
 import os
 
-from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
-from http_utils import post_with_retry
-from logger import get_logger
+from .constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
+from .http_utils import post_with_retry
+from .logger import get_logger
 
 log = get_logger()
 

@@ -26,6 +26,6 @@ select = ["E", "W", "F", "I", "UP"]
 ignore = ["E501"]
 
 [lint.per-file-ignores]
-# main.py intentionally calls load_dotenv() and reconfigures stdout before
+# pipeline.py intentionally calls load_dotenv() and reconfigures stdout before
 # importing the pipeline modules (so those modules see env vars at import).
-"main.py" = ["E402"]
+"daily_fact_poster/pipeline.py" = ["E402"]

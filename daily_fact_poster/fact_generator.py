@@ -15,10 +15,10 @@ import json
 import os
 from typing import Any
 
-from constants import PLACEHOLDER_GEMINI_KEY, is_unset_secret
-from history_manager import is_duplicate, load_history
-from http_utils import post_with_retry
-from logger import get_logger
+from .constants import PLACEHOLDER_GEMINI_KEY, is_unset_secret
+from .history_manager import is_duplicate, load_history
+from .http_utils import post_with_retry
+from .logger import get_logger
 
 log = get_logger()
 

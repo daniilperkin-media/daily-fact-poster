@@ -1,7 +1,5 @@
 """Tests for fallback slide synthesis (Gemini/sample fact → 2-slide carousel)."""
-import constants
-import fact_generator
-import script_generator
+from daily_fact_poster import constants, fact_generator, script_generator
 
 
 def test_fact_to_slides_uses_title_and_fact():

@@ -10,12 +10,12 @@ import os
 import re
 from typing import Any
 
-from constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
-from fact_generator import fact_to_slides
-from fact_generator import generate_fact as fallback_gemini_fact
-from history_manager import is_duplicate, load_history
-from logger import get_logger
-from openrouter_client import call_openrouter_llm
+from .constants import PLACEHOLDER_OPENROUTER_KEY, is_unset_secret
+from .fact_generator import fact_to_slides
+from .fact_generator import generate_fact as fallback_gemini_fact
+from .history_manager import is_duplicate, load_history
+from .logger import get_logger
+from .openrouter_client import call_openrouter_llm
 
 log = get_logger()
 

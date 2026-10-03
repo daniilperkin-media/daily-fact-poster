@@ -15,9 +15,9 @@ import time
 
 import requests
 
-from constants import PLACEHOLDER_TIKTOK_ACCESS_TOKEN, is_unset_secret
-from logger import get_logger
-from tiktok_auth import refresh_access_token
+from .constants import PLACEHOLDER_TIKTOK_ACCESS_TOKEN, is_unset_secret
+from .logger import get_logger
+from .tiktok_auth import refresh_access_token
 
 log = get_logger()
 

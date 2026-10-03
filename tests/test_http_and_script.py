@@ -4,8 +4,7 @@ from unittest import mock
 import pytest
 import requests
 
-import http_utils
-import script_generator
+from daily_fact_poster import http_utils, script_generator
 
 
 def _http_error(status):

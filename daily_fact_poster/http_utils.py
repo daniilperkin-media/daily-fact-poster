@@ -4,7 +4,7 @@ Wraps requests.get / requests.post so every network call in the pipeline
 survives transient failures without crashing the whole run.
 
 Usage:
-    from http_utils import get_with_retry, post_with_retry
+    from .http_utils import get_with_retry, post_with_retry
     response = get_with_retry("https://example.com/api", timeout=30)
     response = post_with_retry("https://example.com/api", json={...}, timeout=30)
 """
@@ -13,7 +13,7 @@ from typing import Any
 
 import requests
 
-from logger import get_logger
+from .logger import get_logger
 
 log = get_logger()
 
