@@ -1,9 +1,20 @@
 import os
+import sys
 import urllib.parse
 import webbrowser
 
 import requests
 from dotenv import load_dotenv
+
+# The shared sentinel constants live in the package one level up; this script
+# is meant to be run directly (python tools/get_tiktok_user_token.py).
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from daily_fact_poster.constants import (  # noqa: E402
+    PLACEHOLDER_TIKTOK_CLIENT_KEY,
+    PLACEHOLDER_TIKTOK_CLIENT_SECRET,
+    is_unset_secret,
+)
 
 load_dotenv()
 
@@ -12,8 +23,14 @@ CLIENT_SECRET = os.environ.get("TIKTOK_CLIENT_SECRET")
 REDIRECT_URI = "https://github.com/daniilperkin/photo-video-editing"
 
 def get_user_token():
-    if not CLIENT_KEY or not CLIENT_SECRET:
-        print("❌ Please set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in .env first.")
+    if (
+        is_unset_secret(CLIENT_KEY or "", PLACEHOLDER_TIKTOK_CLIENT_KEY)
+        or is_unset_secret(CLIENT_SECRET or "", PLACEHOLDER_TIKTOK_CLIENT_SECRET)
+    ):
+        print(
+            "❌ TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET are missing or still the "
+            ".env.example placeholder values. Set your real app credentials in .env first."
+        )
         return
 
     # Build Auth URL

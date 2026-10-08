@@ -111,9 +111,13 @@ def main():
     client_key = os.environ.get("TIKTOK_CLIENT_KEY", "").strip()
     client_secret = os.environ.get("TIKTOK_CLIENT_SECRET", "").strip()
 
-    if not client_key or not client_secret:
-        print("❌ Error: TIKTOK_CLIENT_KEY or TIKTOK_CLIENT_SECRET not found in .env!")
-        print("Please add them to your .env file first.")
+    if (
+        is_unset_secret(client_key, PLACEHOLDER_TIKTOK_CLIENT_KEY)
+        or is_unset_secret(client_secret, PLACEHOLDER_TIKTOK_CLIENT_SECRET)
+    ):
+        print("❌ Error: TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET are missing or still")
+        print("   set to the .env.example placeholder values. Add your real app")
+        print("   credentials (TikTok Developer Portal → your app) to .env first.")
         return
 
     # A registered redirect URI in your TikTok Developer Portal is required.

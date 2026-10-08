@@ -3,8 +3,12 @@ from unittest import mock
 
 import pytest
 
-from daily_fact_poster import tiktok_poster
-from daily_fact_poster.constants import PLACEHOLDER_TIKTOK_ACCESS_TOKEN
+from daily_fact_poster import tiktok_auth, tiktok_poster
+from daily_fact_poster.constants import (
+    PLACEHOLDER_TIKTOK_ACCESS_TOKEN,
+    PLACEHOLDER_TIKTOK_CLIENT_KEY,
+    PLACEHOLDER_TIKTOK_CLIENT_SECRET,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -134,3 +138,13 @@ def test_expired_token_triggers_refresh(monkeypatch, video):
     init_calls = [c for c in calls if c[0] == "post" and c[1] == tiktok_poster._INBOX_INIT_URL]
     assert len(init_calls) == 2
     assert init_calls[1][2]["headers"]["Authorization"] == "Bearer new-token"
+
+
+def test_auth_main_rejects_placeholder_credentials(monkeypatch, capsys):
+    """Placeholder creds must stop the auth flow before any input() prompt."""
+    monkeypatch.setenv("TIKTOK_CLIENT_KEY", PLACEHOLDER_TIKTOK_CLIENT_KEY)
+    monkeypatch.setenv("TIKTOK_CLIENT_SECRET", PLACEHOLDER_TIKTOK_CLIENT_SECRET)
+
+    tiktok_auth.main()  # returns immediately when creds are still placeholders
+
+    assert "TIKTOK_CLIENT_KEY" in capsys.readouterr().out
