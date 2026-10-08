@@ -101,7 +101,7 @@ main.py                    ← entry point (`python main.py`)
 daily_fact_poster/         ← pipeline package (pipeline.py orchestrates; paths.py = REPO_ROOT)
 tools/                     ← legacy token helper (get_tiktok_user_token.py)
 tests/                     ← pytest suite incl. offline end-to-end smoke test
-tiktok_legal/              ← TikTok app legal pages (index / privacy / terms)
+tiktok_legal/              ← app legal pages — public at daniilperkin-media.github.io/daily-fact-poster/tiktok_legal/
 tiktok_app_icon.jpg        ← app icon asset for the TikTok developer portal
 tiktok*.txt                ← site-verification file (public — keep at repo root)
 fonts/                     ← optional bundled fonts (see FONTS.md)

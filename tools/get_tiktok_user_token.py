@@ -20,7 +20,7 @@ load_dotenv()
 
 CLIENT_KEY = os.environ.get("TIKTOK_CLIENT_KEY")
 CLIENT_SECRET = os.environ.get("TIKTOK_CLIENT_SECRET")
-REDIRECT_URI = "https://github.com/daniilperkin/photo-video-editing"
+REDIRECT_URI = "https://daniilperkin-media.github.io/daily-fact-poster/tiktok_legal/"
 
 def get_user_token():
     if (
