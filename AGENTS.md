@@ -29,8 +29,9 @@ a draft. Entry point: `python main.py` (thin wrapper over
   tests import it as `from daily_fact_poster import ...`). `paths.py` is the
   single `REPO_ROOT` source for `logs/`, `fonts/`, `history.json`, `output/`
   and `.env`, all of which stay at the repo root.
-- `tools/` — legacy one-click token helper; prefer
-  `python -m daily_fact_poster.tiktok_auth`.
+- `tools/` — legacy one-click token helper (prefer
+  `python -m daily_fact_poster.tiktok_auth`) plus `post_existing_video.py`, a
+  posting-only upload test that spends no generation credits.
 - `tests/` — pytest suite incl. an offline end-to-end smoke test (mocked
   network + clipboard, real PIL cards + FFmpeg; skips when FFmpeg is absent).
 
