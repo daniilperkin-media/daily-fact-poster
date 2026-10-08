@@ -120,11 +120,15 @@ def main():
         print("   credentials (TikTok Developer Portal → your app) to .env first.")
         return
 
-    # A registered redirect URI in your TikTok Developer Portal is required.
-    # Often, developers use localhost or 127.0.0.1 for local testing.
-    redirect_uri = input("\nWhat is your registered Redirect URI? (Press Enter for 'https://127.0.0.1/'): ").strip()
+    # Must match a redirect URI registered in the TikTok Developer Portal.
+    # TikTok rejects localhost on Web-platform apps, so the default is the
+    # app's public legal page, served via GitHub Pages.
+    redirect_uri = input(
+        "\nWhat is your registered Redirect URI? "
+        "(Press Enter for 'https://daniilperkin-media.github.io/daily-fact-poster/tiktok_legal/'): "
+    ).strip()
     if not redirect_uri:
-        redirect_uri = "https://127.0.0.1/"
+        redirect_uri = "https://daniilperkin-media.github.io/daily-fact-poster/tiktok_legal/"
 
     # URL-encode the redirect URI
     encoded_redirect_uri = urllib.parse.quote(redirect_uri, safe='')

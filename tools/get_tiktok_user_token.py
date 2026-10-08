@@ -53,7 +53,7 @@ def get_user_token():
 
     print("1. Log in with your TikTok account (beaty4you) in the browser.")
     print("2. Click 'Authorize'.")
-    print("3. You will be redirected to GitHub with a URL containing '?code=XXXXXX'.")
+    print("3. You will be redirected to the Daily Facts page with a URL containing '?code=XXXXXX'.")
     print("4. Copy that 'code' from your browser URL bar and paste it below:\n")
 
     code = input("Paste your authorization code here: ").strip()
