@@ -10,6 +10,15 @@ Python pipeline: daily fact script (OpenRouter GPT-4o-mini) → AI images
 a draft. Entry point: `python main.py` (thin wrapper over
 `daily_fact_poster/pipeline.py`). Requires Python 3.10+ and FFmpeg on `PATH`.
 
+The TikTok upload flow is env-selectable: `TIKTOK_FLOW=inbox` (default — the
+video lands in the creator's drafts, finished in the app) or
+`TIKTOK_FLOW=direct` (publishes immediately via Direct Post, privacy from
+`TIKTOK_PRIVACY_LEVEL`, `SELF_ONLY` while the app is unaudited). Direct is the
+path that works when the inbox flow accepts an upload but never surfaces a
+draft in the app. Every TikTok response's `X-Tt-Logid` header is logged on
+init, transfer and status polls — TikTok support asks for those IDs and they
+expire after three days.
+
 ## Cautions
 
 - **Never run `python main.py` without an explicit ask** — it generates AND

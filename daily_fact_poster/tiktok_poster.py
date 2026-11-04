@@ -38,6 +38,42 @@ _CREATOR_INFO_URL = "https://open.tiktokapis.com/v2/post/publish/creator_info/qu
 
 _SUCCESS_STATUSES = ("PUBLISH_COMPLETE", "SEND_TO_USER_INBOX")
 
+# Flow is env-selectable. "inbox" (default) uploads a draft the creator finishes
+# in the app and needs only the video.upload scope. "direct" publishes
+# immediately — the path that still works when the inbox flow accepts an upload
+# but never surfaces a draft in the app (TIKTOK_FLOW=direct).
+_DEFAULT_FLOW = "inbox"
+_DIRECT_FLOW_ALIASES = ("direct", "direct_post", "direct-post")
+_LOG_ID_HEADERS = ("X-Tt-Logid", "x-tt-logid", "X-TT-LOGID")
+
+
+def _log_id(res: requests.Response) -> str:
+    """TikTok's per-call log id — their support needs it to trace a request."""
+    for name in _LOG_ID_HEADERS:
+        value = res.headers.get(name)
+        if value:
+            return value
+    return "-"
+
+
+def _configured_flow() -> str:
+    """Read TIKTOK_FLOW; anything unrecognised keeps the inbox default."""
+    flow = os.environ.get("TIKTOK_FLOW", _DEFAULT_FLOW).strip().lower()
+    return "direct" if flow in _DIRECT_FLOW_ALIASES else "inbox"
+
+
+def _direct_payload(title: str, caption: str, privacy: str, source_info: dict) -> dict:
+    """Body for the Direct Post init (publishes immediately)."""
+    return {
+        "post_info": {
+            "title": title[:90],
+            "description": caption[:_MAX_CAPTION],
+            "privacy_level": privacy,
+            "disable_comment": False,
+        },
+        "source_info": source_info,
+    }
+
 
 def _headers(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
@@ -113,7 +149,7 @@ def _poll_publish_status(publish_id: str, token: str) -> str:
             )
             if res.status_code == 200:
                 status = res.json().get("data", {}).get("status", "UNKNOWN")
-                log.info(f"TikTok publish status [{elapsed}s]: {status}")
+                log.info(f"TikTok publish status [{elapsed}s]: {status} (log_id={_log_id(res)})")
                 if status in ("PUBLISH_COMPLETE", "FAILED", "CANCELLED", "SEND_TO_USER_INBOX"):
                     return status
             else:
@@ -173,33 +209,49 @@ def post_video_to_tiktok(
     # ── 1. Initialize the upload ───────────────────────────────────
     # Inbox (Drafts) first: it is the documented upload flow, needs only the
     # video.upload scope, and avoids the unaudited-client publish restrictions.
-    log.info(f"Uploading {video_size} bytes to TikTok (inbox/Drafts)…")
-    init_res, token = _init_with_refresh(_INBOX_INIT_URL, token, {"source_info": source_info})
-    used = "inbox/Drafts"
+    flow = _configured_flow()
 
-    if init_res.status_code != 200:
-        code, msg = _error_info(init_res)
-        log.warning(f"TikTok inbox init failed ({init_res.status_code}) [{code}]: {msg}")
-
-        # Fallback: Direct Post init (publishes immediately when the app is
-        # allowed to; unaudited clients stay private-viewing only).
-        log.info("Trying Direct Post init as fallback…")
+    if flow == "direct":
+        log.info("TIKTOK_FLOW=direct — skipping the inbox flow.")
         privacy = _resolve_privacy(token, privacy)
-        direct_payload = {
-            "post_info": {
-                "title": title[:90],
-                "description": caption[:_MAX_CAPTION],
-                "privacy_level": privacy,
-                "disable_comment": False,
-            },
-            "source_info": source_info,
-        }
-        init_res, token = _init_with_refresh(_DIRECT_INIT_URL, token, direct_payload)
+        init_res, token = _init_with_refresh(
+            _DIRECT_INIT_URL, token, _direct_payload(title, caption, privacy, source_info)
+        )
         used = "direct post"
         if init_res.status_code != 200:
             code, msg = _error_info(init_res)
-            log.error(f"TikTok Direct Post init failed ({init_res.status_code}) [{code}]: {msg}")
+            log.error(
+                f"TikTok Direct Post init failed ({init_res.status_code}) "
+                f"[{code}] log_id={_log_id(init_res)}: {msg}"
+            )
             return False
+    else:
+        log.info(f"Uploading {video_size} bytes to TikTok (inbox/Drafts)…")
+        init_res, token = _init_with_refresh(_INBOX_INIT_URL, token, {"source_info": source_info})
+        used = "inbox/Drafts"
+
+        if init_res.status_code != 200:
+            code, msg = _error_info(init_res)
+            log.warning(
+                f"TikTok inbox init failed ({init_res.status_code}) [{code}] "
+                f"log_id={_log_id(init_res)}: {msg}"
+            )
+
+            # Fallback: Direct Post init (publishes immediately when the app is
+            # allowed to; unaudited clients stay private-viewing only).
+            log.info("Trying Direct Post init as fallback…")
+            privacy = _resolve_privacy(token, privacy)
+            init_res, token = _init_with_refresh(
+                _DIRECT_INIT_URL, token, _direct_payload(title, caption, privacy, source_info)
+            )
+            used = "direct post"
+            if init_res.status_code != 200:
+                code, msg = _error_info(init_res)
+                log.error(
+                    f"TikTok Direct Post init failed ({init_res.status_code}) "
+                    f"[{code}] log_id={_log_id(init_res)}: {msg}"
+                )
+                return False
 
     try:
         data = init_res.json().get("data", {})
@@ -212,7 +264,10 @@ def post_video_to_tiktok(
         log.error(f"Missing publish_id or upload_url in TikTok init response: {init_res.text[:300]}")
         return False
 
-    log.info(f"Upload initiated via {used} (publish_id={publish_id}). Transferring file…")
+    log.info(
+        f"Upload initiated via {used} (publish_id={publish_id}, "
+        f"log_id={_log_id(init_res)}). Transferring file…"
+    )
 
     # ── 2. Transfer the file data ──────────────────────────────────
     try:
@@ -227,13 +282,19 @@ def post_video_to_tiktok(
         upload_res = requests.put(upload_url, data=video_data, headers=put_headers, timeout=120)
 
         if upload_res.status_code not in (200, 201):
-            log.error(f"TikTok upload transfer failed ({upload_res.status_code}): {upload_res.text[:300]}")
+            log.error(
+                f"TikTok upload transfer failed ({upload_res.status_code}) "
+                f"log_id={_log_id(upload_res)}: {upload_res.text[:300]}"
+            )
             return False
     except Exception as e:
         log.error(f"Failed to upload video data: {e}")
         return False
 
-    log.info(f"Transfer complete (publish_id={publish_id}). Polling processing status…")
+    log.info(
+        f"Transfer complete (publish_id={publish_id}, "
+        f"log_id={_log_id(upload_res)}). Polling processing status…"
+    )
 
     # ── 3. Poll the publish status ─────────────────────────────────
     final_status = _poll_publish_status(publish_id, token)

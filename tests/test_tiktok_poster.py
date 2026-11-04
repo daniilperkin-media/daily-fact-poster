@@ -19,6 +19,7 @@ def _clean_env(monkeypatch):
         "TIKTOK_CLIENT_KEY",
         "TIKTOK_CLIENT_SECRET",
         "TIKTOK_PRIVACY_LEVEL",
+        "TIKTOK_FLOW",
     ):
         monkeypatch.delenv(var, raising=False)
 
@@ -30,11 +31,12 @@ def video(tmp_path):
     return str(path)
 
 
-def _resp(status=200, payload=None, text=""):
+def _resp(status=200, payload=None, text="", headers=None):
     r = mock.Mock()
     r.status_code = status
     r.json.return_value = payload if payload is not None else {}
     r.text = text
+    r.headers = headers or {}
     return r
 
 
@@ -148,3 +150,72 @@ def test_auth_main_rejects_placeholder_credentials(monkeypatch, capsys):
     tiktok_auth.main()  # returns immediately when creds are still placeholders
 
     assert "TIKTOK_CLIENT_KEY" in capsys.readouterr().out
+
+
+def test_log_ids_are_logged(monkeypatch, video, caplog):
+    """Every TikTok call's X-Tt-Logid must reach the log — support asks for it."""
+    _flow(monkeypatch, [
+        _resp(
+            200,
+            {"data": {"publish_id": "pid", "upload_url": "https://up"}},
+            headers={"X-Tt-Logid": "INITLOG123"},
+        ),
+        _resp(
+            200,
+            {"data": {"status": "SEND_TO_USER_INBOX"}},
+            headers={"X-Tt-Logid": "POLLLOG456"},
+        ),
+    ])
+    with caplog.at_level("INFO"):
+        assert tiktok_poster.post_video_to_tiktok(video, access_token="tok") is True
+
+    assert "INITLOG123" in caplog.text
+    assert "POLLLOG456" in caplog.text
+
+
+def test_direct_flow_skips_the_inbox(monkeypatch, video):
+    """TIKTOK_FLOW=direct must never touch the inbox endpoint."""
+    monkeypatch.setenv("TIKTOK_FLOW", "direct")
+    calls = _flow(monkeypatch, [
+        _resp(200, {"data": {"privacy_level_options": ["SELF_ONLY"]}}),
+        _resp(200, {"data": {"publish_id": "pid", "upload_url": "https://up"}}),
+        _resp(200, {"data": {"status": "PUBLISH_COMPLETE"}}),
+    ])
+    assert tiktok_poster.post_video_to_tiktok(video, access_token="tok", caption="cap") is True
+
+    urls = [c[1] for c in calls if c[0] == "post"]
+    assert tiktok_poster._INBOX_INIT_URL not in urls
+    direct = [c for c in calls if c[0] == "post" and c[1] == tiktok_poster._DIRECT_INIT_URL][0]
+    assert direct[2]["json"]["post_info"]["privacy_level"] == "SELF_ONLY"
+    assert direct[2]["json"]["post_info"]["description"] == "cap"
+
+
+def test_direct_flow_respects_a_public_privacy_level(monkeypatch, video):
+    """With the app approved, PUBLIC_TO_EVERYONE must survive to the payload."""
+    monkeypatch.setenv("TIKTOK_FLOW", "direct")
+    monkeypatch.setenv("TIKTOK_PRIVACY_LEVEL", "PUBLIC_TO_EVERYONE")
+    calls = _flow(monkeypatch, [
+        _resp(
+            200,
+            {"data": {"privacy_level_options": ["PUBLIC_TO_EVERYONE", "SELF_ONLY"]}},
+        ),
+        _resp(200, {"data": {"publish_id": "pid", "upload_url": "https://up"}}),
+        _resp(200, {"data": {"status": "PUBLISH_COMPLETE"}}),
+    ])
+    assert tiktok_poster.post_video_to_tiktok(video, access_token="tok") is True
+
+    direct = [c for c in calls if c[0] == "post" and c[1] == tiktok_poster._DIRECT_INIT_URL][0]
+    assert direct[2]["json"]["post_info"]["privacy_level"] == "PUBLIC_TO_EVERYONE"
+
+
+def test_direct_flow_init_failure_is_a_failure(monkeypatch, video):
+    """A failed Direct Post init must not fall back to the broken inbox flow."""
+    monkeypatch.setenv("TIKTOK_FLOW", "direct")
+    calls = _flow(monkeypatch, [
+        _resp(200, {"data": {"privacy_level_options": ["SELF_ONLY"]}}),
+        _resp(403, {"error": {"code": "privacy_level_option_mismatch", "message": "no"}}),
+    ])
+    assert tiktok_poster.post_video_to_tiktok(video, access_token="tok") is False
+
+    urls = [c[1] for c in calls if c[0] == "post"]
+    assert tiktok_poster._INBOX_INIT_URL not in urls
